@@ -1,19 +1,19 @@
 /*
- * db.c — ScanXSS persistent database
+ * Copyright (c) 2025 root_bsd (mglushak@gmail.com)
  *
- * Schema (one SQLite file per target, or one shared file via --db):
+ * This file is part of ScanXSS — Web Vulnerability Scanner.
  *
- *   targets   — one row per unique URL being scanned
- *   scans     — one row per scan run  (links to targets)
- *   urls      — crawled URLs          (links to scans)
- *   forms     — discovered forms      (links to scans)
- *   findings  — vulnerabilities       (links to scans)
+ * ScanXSS is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
  *
- * Modes:
- *   FULL      — new scan_id, fresh crawl, all modules
- *   RESUME    — reuse scan_id, skip already-crawled URLs
- *   RESCAN    — new scan_id, reuse crawl from last scan, all modules
- *   RETARGET  — new scan_id, reuse crawl, only modules that fired before
+ * ScanXSS is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * SPDX-License-Identifier: GPL-2.0
  */
 
 #include "scanxss.h"

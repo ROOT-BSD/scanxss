@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2025 root_bsd (mglushak@gmail.com)
+ *
+ * This file is part of ScanXSS — Web Vulnerability Scanner.
+ *
+ * ScanXSS is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * ScanXSS is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * SPDX-License-Identifier: GPL-2.0
+ */
+
 #include "scanxss.h"
 #include "vuln_info.h"
 #include <time.h>
@@ -197,15 +215,15 @@ int report_html(const ScanContext *ctx, const char *filename) {
 "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"
 "background:#f1f5f9;color:#1e293b;line-height:1.6}\n"
 /* header */
-"header{background:linear-gradient(135deg,#1e3a8a 0%%,#1d4ed8 100%%);"
-"padding:28px 40px;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.2)}\n"
-".hdr-top{display:flex;align-items:center;gap:16px}\n"
+"header{background:#0f172a;"
+"padding:28px 40px;color:#f8fafc;box-shadow:0 4px 16px rgba(0,0,0,.4)}\n"
+".hdr-top{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}\n"
 ".hdr-logo{font-size:2.2em}\n"
 ".hdr-title h1{font-size:1.5em;font-weight:700;letter-spacing:-.01em}\n"
-".hdr-title p{color:#93c5fd;font-size:.88em;margin-top:2px}\n"
-".hdr-meta{display:flex;gap:24px;margin-top:16px;flex-wrap:wrap}\n"
-".hdr-meta .m{background:rgba(255,255,255,.12);border-radius:8px;"
-"padding:8px 16px;font-size:.82em;color:#e0f2fe}\n"
+".hdr-title p{color:#94a3b8;font-size:.88em;margin-top:2px}\n"
+".hdr-meta{display:flex;gap:16px;margin-top:16px;flex-wrap:wrap;justify-content:center}\n"
+".hdr-meta .m{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:8px;"
+"padding:8px 16px;font-size:.82em;color:#cbd5e1}\n"
 ".hdr-meta .m strong{display:block;font-size:1.3em;color:#fff;font-weight:700}\n"
 /* layout */
 ".container{max-width:1280px;margin:0 auto;padding:28px 24px}\n"
@@ -480,6 +498,7 @@ int report_html(const ScanContext *ctx, const char *filename) {
 
     fprintf(f,"</div>\n");
     fprintf(f,"<footer>%s %s &nbsp;·&nbsp; Web Vulnerability Scanner"
+              " &nbsp;·&nbsp; &copy; 2025 root_bsd (mglushak@gmail.com)"
               " &nbsp;·&nbsp; GPL-2.0 &nbsp;·&nbsp; %s</footer>\n"
               "</body></html>\n",
             SCANXSS_NAME, SCANXSS_VERSION, tstart);
