@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang='uk'>
+<head>
+<meta charset='UTF-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'>
+<meta http-equiv='Content-Security-Policy' content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>ScanXSS — https://demo.site.com/</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:15px}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f1f5f9;color:#1e293b;line-height:1.6}
+header{background:#0f172a;padding:28px 40px;color:#f8fafc;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.hdr-top{display:flex;align-items:center;gap:16px}
+.hdr-logo{font-size:2.2em}
+.hdr-title h1{font-size:1.5em;font-weight:700;letter-spacing:-.01em}
+.hdr-title p{color:#94a3b8;font-size:.88em;margin-top:2px}
+.hdr-meta{display:flex;gap:24px;margin-top:16px;flex-wrap:wrap}
+.hdr-meta .m{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:8px 16px;font-size:.82em;color:#cbd5e1}
+.hdr-meta .m strong{display:block;font-size:1.3em;color:#fff;font-weight:700}
+.container{max-width:1280px;margin:0 auto;padding:28px 24px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:28px}
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:18px 22px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card .num{font-size:2.2em;font-weight:800;color:#3b82f6;line-height:1}
+.card.danger .num{color:#dc2626}
+.card.warn .num{color:#f59e0b}
+.card .lbl{color:#64748b;font-size:.78em;text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin-top:5px}
+.sec-title{font-size:.75em;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin:28px 0 12px;padding-bottom:8px;border-bottom:1px solid #e2e8f0}
+.vuln-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;margin-bottom:20px;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,.06)}
+.vuln-header{padding:16px 20px;display:flex;align-items:center;gap:14px;cursor:pointer;user-select:none}
+.vuln-header:hover{background:#f8fafc}
+.sev-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.sev-5 .sev-dot{background:#dc2626}
+.sev-4 .sev-dot{background:#f59e0b}
+.sev-3 .sev-dot{background:#f97316}
+.sev-2 .sev-dot{background:#3b82f6}
+.sev-1 .sev-dot{background:#94a3b8}
+.vuln-type{font-weight:700;font-size:.95em}
+.sev-5 .vuln-type{color:#dc2626}
+.sev-4 .vuln-type{color:#f59e0b}
+.sev-3 .vuln-type{color:#f97316}
+.sev-2 .vuln-type{color:#3b82f6}
+.badge-sev{display:inline-block;padding:2px 10px;border-radius:20px;font-size:.73em;font-weight:700;margin-left:auto;white-space:nowrap}
+.sev-5 .badge-sev{background:#fef2f2;color:#dc2626;border:1px solid #fecaca}
+.sev-4 .badge-sev{background:#fffbeb;color:#d97706;border:1px solid #fde68a}
+.sev-3 .badge-sev{background:#fff7ed;color:#ea580c;border:1px solid #fed7aa}
+.sev-2 .badge-sev{background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe}
+.sev-1 .badge-sev{background:#f8fafc;color:#64748b;border:1px solid #e2e8f0}
+.chevron{margin-left:8px;transition:transform .2s;color:#94a3b8;font-size:.8em}
+.open .chevron{transform:rotate(90deg)}
+.vuln-body{padding:0 20px 20px;border-top:1px solid #f1f5f9;display:none}
+.vuln-body.show{display:block}
+.detail-grid{display:grid;grid-template-columns:120px 1fr;gap:6px 12px;margin:14px 0;font-size:.87em}
+.detail-grid .dk{color:#64748b;font-weight:600;padding-top:2px}
+.detail-grid .dv code{background:#f1f5f9;padding:2px 7px;border-radius:4px;font-family:monospace;font-size:.9em;word-break:break-all}
+.expl{background:#f8fafc;border-left:4px solid #3b82f6;border-radius:0 8px 8px 0;padding:14px 18px;margin:16px 0;font-size:.88em}
+.expl.crit{border-color:#dc2626;background:#fff5f5}
+.expl.high{border-color:#f59e0b;background:#fffdf0}
+.expl h4{font-size:.82em;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin-bottom:8px;font-weight:700}
+.expl p{color:#374151;line-height:1.7;margin-bottom:8px}
+.expl p:last-child{margin-bottom:0}
+.impact-box{background:#fff;border:1px solid #fecaca;border-radius:6px;padding:10px 14px;margin:8px 0;font-size:.85em;color:#991b1b}
+.fix-box{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px 14px;margin:8px 0;font-size:.85em;color:#166534}
+.refs{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.ref-link{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:20px;font-size:.78em;color:#1d4ed8;text-decoration:none;font-weight:500;transition:all .15s}
+.ref-link:hover{background:#eff6ff;border-color:#3b82f6;box-shadow:0 1px 4px rgba(59,130,246,.2)}
+.ref-icon{font-size:.9em}
+.empty{text-align:center;padding:60px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;color:#94a3b8;font-size:1.05em}
+.empty .big{font-size:3em;margin-bottom:12px}
+table{width:100%%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:28px;font-size:.87em}
+th{background:#f1f5f9;padding:10px 14px;text-align:left;font-size:.74em;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:2px solid #e2e8f0;white-space:nowrap}
+td{padding:10px 14px;border-bottom:1px solid #f1f5f9;vertical-align:top;word-break:break-all}
+tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:#f8fafc}
+code{font-family:monospace;background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:.85em}
+footer{text-align:center;padding:24px;color:#94a3b8;font-size:.8em;border-top:1px solid #e2e8f0;margin-top:8px;background:#fff}
+</style>
+<script>
+function toggle(id){
+  var b=document.getElementById('b'+id);
+  var h=document.getElementById('h'+id);
+  if(b.classList.contains('show')){
+    b.classList.remove('show');
+    h.classList.remove('open');
+  } else {
+    b.classList.add('show');
+    h.classList.add('open');
+  }
+}
+</script>
+</head>
+<body>
+<header>
+<div class='hdr-top'>
+<div class='hdr-logo'>🔍</div>
+<div class='hdr-title'>
+<h1>ScanXSS — Звіт сканування вразливостей</h1>
+<p>https://demo.site.com/ &nbsp;·&nbsp; Scan #5 &nbsp;·&nbsp; 2026-04-04 04:11:19</p>
+</div></div>
+<div class='hdr-meta'>
+<div class='m'><strong>5</strong>вразливостей</div>
+<div class='m'><strong>27</strong>URL знайдено</div>
+<div class='m'><strong>8</strong>Форм</div>
+<div class='m'><strong>312</strong>HTTP запитів</div>
+<div class='m'><strong>90 сек</strong>тривалість</div>
+</div>
+</header>
+<div class='container'>
+<div class='cards'>
+<div class='card danger'><div class='num'>5</div><div class='lbl'>Всього</div></div>
+<div class='card danger'><div class='num'>3</div><div class='lbl'>Критичних</div></div>
+<div class='card warn'><div class='num'>2</div><div class='lbl'>Високих</div></div>
+<div class='card'><div class='num'>0</div><div class='lbl'>Середніх</div></div>
+</div>
+<p class='sec-title'>Детальний опис вразливостей</p>
+<div class='vuln-card sev-5'>
+<div class='vuln-header' id='h0' onclick='toggle(0)'>
+<span class='sev-dot'></span>
+<span class='vuln-type'>Remote Code Execution</span>
+<span style='color:#64748b;font-size:.82em;margin-left:8px'>https://demo.site.com/run → <code>cmd</code></span>
+<span class='badge-sev'>Критична</span>
+<span class='chevron'>▶</span>
+</div>
+<div class='vuln-body show' id='b0'>
+<div class='detail-grid'>
+<span class='dk'>URL</span><span class='dv'><code>https://demo.site.com/run</code></span>
+<span class='dk'>Параметр</span><span class='dv'><code>cmd</code></span>
+<span class='dk'>Payload</span><span class='dv'><code>; id</code></span>
+<span class='dk'>Доказ</span><span class='dv'>uid=33(www-data)</span>
+<span class='dk'>Модуль</span><span class='dv'><code>rce</code></span>
+<span class='dk'>CVSS</span><span class='dv'><strong>CVSS 9.8 — Critical</strong></span>
+</div>
+<div class='expl crit'>
+<h4>🔎 Що це таке</h4>
+<p>Виконання довільного коду на сервері. Найнебезпечніша категорія вразливостей. Зловмисник отримує повний контроль над сервером: доступ до файлів, БД, мережевих ресурсів, може встановити backdoor або ransomware.</p>
+<h4 style='margin-top:12px'>💥 Можливий вплив</h4>
+<div class='impact-box'>Повний компроміс сервера, витік усіх даних, потенційне поширення в мережі.</div>
+<h4 style='margin-top:12px'>🛡 Як виправити</h4>
+<div class='fix-box'>Негайно ізолюйте сервер. Оновіть фреймворк/залежності. Ніколи не передавайте дані від користувача у eval(), exec(), system(). Використовуйте allowlist для дозволених операцій.</div>
+</div>
+<div class='refs'>
+<span style='font-size:.8em;color:#64748b;font-weight:600;align-self:center'>Детальніше:</span>
+<a class='ref-link' href='https://owasp.org/Top10/A03_2021-Injection/' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>OWASP A03:2021 — Injection</a>
+<a class='ref-link' href='https://cwe.mitre.org/data/definitions/94.html' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>CWE-94: Code Injection</a>
+<a class='ref-link' href='https://cwe.mitre.org/data/definitions/78.html' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>CWE-78: OS Command Injection</a>
+<a class='ref-link' href='https://owasp.org/www-project-web-security-testing-guide/v42/4-Web_Application_Security_Testing/07-Input_Validation_Testing/12-Testing_for_Command_Injection' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>OWASP Testing Guide — Command Injection</a>
+<a class='ref-link' href='https://www.first.org/cvss/calculator/3.1' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>CVSS v3.1 Calculator</a>
+</div>
+</div>
+</div>
+
+<div class='vuln-card sev-5'>
+<div class='vuln-header' id='h1' onclick='toggle(1)'>
+<span class='sev-dot'></span>
+<span class='vuln-type'>SQL Injection</span>
+<span style='color:#64748b;font-size:.82em;margin-left:8px'>https://demo.site.com/user → <code>id</code></span>
+<span class='badge-sev'>Критична</span>
+<span class='chevron'>▶</span>
+</div>
+<div class='vuln-body' id='b1'>
+<div class='detail-grid'>
+<span class='dk'>URL</span><span class='dv'><code>https://demo.site.com/user</code></span>
+<span class='dk'>Параметр</span><span class='dv'><code>id</code></span>
+<span class='dk'>Payload</span><span class='dv'><code>&#39;</code></span>
+<span class='dk'>Доказ</span><span class='dv'>SQL syntax error near &#39;&#39;&#39;</span>
+<span class='dk'>Модуль</span><span class='dv'><code>sqli</code></span>
+<span class='dk'>CVSS</span><span class='dv'><strong>CVSS 9.8 — Critical</strong></span>
+</div>
+<div class='expl crit'>
+<h4>🔎 Що це таке</h4>
+<p>SQL-ін'єкція дозволяє маніпулювати запитами до бази даних. Зловмисник може читати, змінювати або видаляти будь-які дані в БД, обходити автентифікацію, а в деяких конфігураціях — виконувати команди ОС.</p>
+<h4 style='margin-top:12px'>💥 Можливий вплив</h4>
+<div class='impact-box'>Витік усіх даних БД (паролі, персональні дані, фінансова інформація), обхід авторизації, пошкодження даних, повний компроміс сервера (через xp_cmdshell/UDF).</div>
+<h4 style='margin-top:12px'>🛡 Як виправити</h4>
+<div class='fix-box'>Використовуйте параметризовані запити (prepared statements). Ніколи не конкатенуйте SQL з даними користувача. Застосовуйте ORM. Обмежте права облікового запису БД.</div>
+</div>
+<div class='refs'>
+<span style='font-size:.8em;color:#64748b;font-weight:600;align-self:center'>Детальніше:</span>
+<a class='ref-link' href='https://owasp.org/Top10/A03_2021-Injection/' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>OWASP A03:2021 — Injection</a>
+<a class='ref-link' href='https://cwe.mitre.org/data/definitions/89.html' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>CWE-89: SQL Injection</a>
+<a class='ref-link' href='https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>OWASP SQL Injection Prevention Cheat Sheet</a>
+<a class='ref-link' href='https://owasp.org/www-project-web-security-testing-guide/v42/4-Web_Application_Security_Testing/07-Input_Validation_Testing/05-Testing_for_SQL_Injection' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>OWASP Testing — SQL Injection</a>
+<a class='ref-link' href='https://portswigger.net/web-security/sql-injection' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>PortSwigger — SQL Injection</a>
+</div>
+</div>
+</div>
+
+<div class='vuln-card sev-5'>
+<div class='vuln-header' id='h2' onclick='toggle(2)'>
+<span class='sev-dot'></span>
+<span class='vuln-type'>Local File Inclusion</span>
+<span style='color:#64748b;font-size:.82em;margin-left:8px'>https://demo.site.com/file → <code>path</code></span>
+<span class='badge-sev'>Критична</span>
+<span class='chevron'>▶</span>
+</div>
+<div class='vuln-body' id='b2'>
+<div class='detail-grid'>
+<span class='dk'>URL</span><span class='dv'><code>https://demo.site.com/file</code></span>
+<span class='dk'>Параметр</span><span class='dv'><code>path</code></span>
+<span class='dk'>Payload</span><span class='dv'><code>../../../../etc/passwd</code></span>
+<span class='dk'>Доказ</span><span class='dv'>root:x:0:0:root:/root:/bin/bash</span>
+<span class='dk'>Модуль</span><span class='dv'><code>lfi</code></span>
+<span class='dk'>CVSS</span><span class='dv'><strong>CVSS 8.6 — High</strong></span>
+</div>
+<div class='expl crit'>
+<h4>🔎 Що це таке</h4>
+<p>Вразливість дозволяє читати довільні файли сервера через path traversal. Зловмисник отримує доступ до /etc/passwd, конфігураційних файлів, приватних ключів SSH, вихідного коду застосунку та логів.</p>
+<h4 style='margin-top:12px'>💥 Можливий вплив</h4>
+<div class='impact-box'>Витік облікових даних, приватних ключів, вихідного коду. При певних умовах може призвести до RCE (через log poisoning).</div>
+<h4 style='margin-top:12px'>🛡 Як виправити</h4>
+<div class='fix-box'>Ніколи не використовуйте дані користувача у шляхах файлів. Застосовуйте allowlist дозволених файлів. Обмежте права читання файлів для веб-процесу. Використовуйте chroot/container ізоляцію.</div>
+</div>
+<div class='refs'>
+<span style='font-size:.8em;color:#64748b;font-weight:600;align-self:center'>Детальніше:</span>
+<a class='ref-link' href='https://owasp.org/www-community/attacks/Path_Traversal' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>OWASP — Path Traversal</a>
+<a class='ref-link' href='https://cwe.mitre.org/data/definitions/22.html' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>CWE-22: Path Traversal</a>
+<a class='ref-link' href='https://cwe.mitre.org/data/definitions/98.html' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>CWE-98: File Inclusion</a>
+<a class='ref-link' href='https://owasp.org/www-project-web-security-testing-guide/v42/4-Web_Application_Security_Testing/07-Input_Validation_Testing/11.1-Testing_for_Local_File_Inclusion' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>OWASP Testing — LFI</a>
+<a class='ref-link' href='https://portswigger.net/web-security/file-path-traversal' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>PortSwigger — File Path Traversal</a>
+</div>
+</div>
+</div>
+
+<div class='vuln-card sev-4'>
+<div class='vuln-header' id='h3' onclick='toggle(3)'>
+<span class='sev-dot'></span>
+<span class='vuln-type'>Server-Side Request Forgery (SSRF)</span>
+<span style='color:#64748b;font-size:.82em;margin-left:8px'>https://demo.site.com/fetch → <code>url</code></span>
+<span class='badge-sev'>Висока</span>
+<span class='chevron'>▶</span>
+</div>
+<div class='vuln-body' id='b3'>
+<div class='detail-grid'>
+<span class='dk'>URL</span><span class='dv'><code>https://demo.site.com/fetch</code></span>
+<span class='dk'>Параметр</span><span class='dv'><code>url</code></span>
+<span class='dk'>Payload</span><span class='dv'><code>http://169.254.169.254/</code></span>
+<span class='dk'>Доказ</span><span class='dv'>HTTP/1.1 200 OK (AWS metadata)</span>
+<span class='dk'>Модуль</span><span class='dv'><code>ssrf</code></span>
+<span class='dk'>CVSS</span><span class='dv'><strong>CVSS 8.6 — High</strong></span>
+</div>
+<div class='expl high'>
+<h4>🔎 Що це таке</h4>
+<p>Сервер виконує HTTP-запити на довільні адреси за вказівкою зловмисника. Це дозволяє сканувати внутрішню мережу, звертатися до метадата-сервісів хмарних провайдерів (AWS/GCP/Azure), обходити файрволи та отримувати токени доступу до хмарної інфраструктури.</p>
+<h4 style='margin-top:12px'>💥 Можливий вплив</h4>
+<div class='impact-box'>Доступ до внутрішніх сервісів, хмарних метаданих (IAM-ролі, токени AWS), сканування внутрішньої мережі, обхід захисту периметра.</div>
+<h4 style='margin-top:12px'>🛡 Як виправити</h4>
+<div class='fix-box'>Не дозволяйте серверу робити запити за URL від користувача без валідації. Використовуйте allowlist дозволених доменів. Відключіть непотрібні схеми (file://, gopher://, dict://). Ізолюйте сервер від внутрішньої мережі через egress firewall.</div>
+</div>
+<div class='refs'>
+<span style='font-size:.8em;color:#64748b;font-weight:600;align-self:center'>Детальніше:</span>
+<a class='ref-link' href='https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>OWASP A10:2021 — SSRF</a>
+<a class='ref-link' href='https://cwe.mitre.org/data/definitions/918.html' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>CWE-918: SSRF</a>
+<a class='ref-link' href='https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>OWASP SSRF Prevention Cheat Sheet</a>
+<a class='ref-link' href='https://portswigger.net/web-security/ssrf' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>PortSwigger — SSRF</a>
+<a class='ref-link' href='https://book.hacktricks.xyz/pentesting-web/ssrf-server-side-request-forgery' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>HackTricks — SSRF</a>
+</div>
+</div>
+</div>
+
+<div class='vuln-card sev-4'>
+<div class='vuln-header' id='h4' onclick='toggle(4)'>
+<span class='sev-dot'></span>
+<span class='vuln-type'>Cross-Site Scripting (XSS)</span>
+<span style='color:#64748b;font-size:.82em;margin-left:8px'>https://demo.site.com/search → <code>q</code></span>
+<span class='badge-sev'>Висока</span>
+<span class='chevron'>▶</span>
+</div>
+<div class='vuln-body' id='b4'>
+<div class='detail-grid'>
+<span class='dk'>URL</span><span class='dv'><code>https://demo.site.com/search</code></span>
+<span class='dk'>Параметр</span><span class='dv'><code>q</code></span>
+<span class='dk'>Payload</span><span class='dv'><code>&lt;script&gt;alert(1)&lt;/script&gt;</code></span>
+<span class='dk'>Доказ</span><span class='dv'>Payload reflected unescaped in body</span>
+<span class='dk'>Модуль</span><span class='dv'><code>xss</code></span>
+<span class='dk'>CVSS</span><span class='dv'><strong>CVSS 7.4 — High</strong></span>
+</div>
+<div class='expl high'>
+<h4>🔎 Що це таке</h4>
+<p>Cross-Site Scripting дозволяє впровадити шкідливий JavaScript у сторінку, яку бачать інші користувачі. Зловмисник може вкрасти cookies/сесії, виконувати дії від імені жертви, перенаправляти на фішинг-сторінки, перехоплювати введення форм (keylogging).</p>
+<h4 style='margin-top:12px'>💥 Можливий вплив</h4>
+<div class='impact-box'>Крадіжка сесій та облікових даних, defacement, поширення шкідливого ПЗ, виконання привілейованих дій від імені адміністратора.</div>
+<h4 style='margin-top:12px'>🛡 Як виправити</h4>
+<div class='fix-box'>Екранізуйте весь вивід у HTML (< → &lt;, > → &gt; тощо). Використовуйте Content Security Policy (CSP). Встановіть прапори HttpOnly та Secure для cookies. Застосовуйте бібліотеки для безпечного рендерингу (DOMPurify).</div>
+</div>
+<div class='refs'>
+<span style='font-size:.8em;color:#64748b;font-weight:600;align-self:center'>Детальніше:</span>
+<a class='ref-link' href='https://owasp.org/www-community/attacks/xss/' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>OWASP A03:2021 — XSS</a>
+<a class='ref-link' href='https://cwe.mitre.org/data/definitions/79.html' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>CWE-79: XSS</a>
+<a class='ref-link' href='https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>OWASP XSS Prevention Cheat Sheet</a>
+<a class='ref-link' href='https://portswigger.net/web-security/cross-site-scripting' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>PortSwigger — XSS</a>
+<a class='ref-link' href='https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP' target='_blank' rel='noopener'><span class='ref-icon'>🔗</span>MDN — Content Security Policy</a>
+</div>
+</div>
+</div>
+
+<p class='sec-title'>Зведена таблиця</p>
+<table>
+<thead><tr>
+<th>#</th><th>Тип</th><th>Серйозність</th><th>URL</th><th>Параметр</th><th>Payload</th>
+</tr></thead>
+<tbody>
+<tr>
+<td style='color:#94a3b8;font-weight:600'>1</td>
+<td style='font-weight:600'>Remote Code Execution</td>
+<td><strong style='color:#dc2626'>Критична</strong></td>
+<td><code>https://demo.site.com/run</code></td>
+<td><code>cmd</code></td>
+<td><code>; id</code></td>
+</tr>
+<tr>
+<td style='color:#94a3b8;font-weight:600'>2</td>
+<td style='font-weight:600'>SQL Injection</td>
+<td><strong style='color:#dc2626'>Критична</strong></td>
+<td><code>https://demo.site.com/user</code></td>
+<td><code>id</code></td>
+<td><code>&#39;</code></td>
+</tr>
+<tr>
+<td style='color:#94a3b8;font-weight:600'>3</td>
+<td style='font-weight:600'>Local File Inclusion</td>
+<td><strong style='color:#dc2626'>Критична</strong></td>
+<td><code>https://demo.site.com/file</code></td>
+<td><code>path</code></td>
+<td><code>../../../../etc/passwd</code></td>
+</tr>
+<tr>
+<td style='color:#94a3b8;font-weight:600'>4</td>
+<td style='font-weight:600'>Server-Side Request Forgery (SSRF)</td>
+<td><strong style='color:#f59e0b'>Висока</strong></td>
+<td><code>https://demo.site.com/fetch</code></td>
+<td><code>url</code></td>
+<td><code>http://169.254.169.254/</code></td>
+</tr>
+<tr>
+<td style='color:#94a3b8;font-weight:600'>5</td>
+<td style='font-weight:600'>Cross-Site Scripting (XSS)</td>
+<td><strong style='color:#f59e0b'>Висока</strong></td>
+<td><code>https://demo.site.com/search</code></td>
+<td><code>q</code></td>
+<td><code>&lt;script&gt;alert(1)&lt;/script&gt;</code></td>
+</tr>
+</tbody></table>
+</div>
+<footer>ScanXSS 1.3.0 &nbsp;·&nbsp; Web Vulnerability Scanner &nbsp;·&nbsp; GPL-2.0 &nbsp;·&nbsp; 2026-04-04 04:11:19</footer>
+</body></html>

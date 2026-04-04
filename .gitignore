@@ -1,0 +1,8 @@
+build/
+scanxss
+*.o
+*.db
+reports/
+DB_SCAN/
+*.exe
+vendor/sqlite3.c
