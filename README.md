@@ -1,7 +1,7 @@
 # ScanXSS v1.3.0
 
 > **Автоматизований сканер вразливостей веб-застосунків**  
-> Linux · macOS · BSD — без зовнішніх рантайм-залежностей
+> Linux · macOS · BSD · **Windows 11 (GUI)**
 
 ---
 
@@ -15,6 +15,7 @@
 | 🗄 **SQLite БД** | Вся історія сканувань, повторні перевірки |
 | 📄 **3 формати звітів** | HTML · JSON · TXT |
 | 📚 **Пояснення** | Для Critical/High: опис + вплив + виправлення + посилання |
+| 🖥 **Windows GUI** | Win32 інтерфейс, WinHttp, інсталятор NSIS |
 
 ---
 
@@ -38,6 +39,12 @@ make
 ```
 ../DB_SCAN/scan.db                           ← база даних
 ../report/site.com/site.com_20250401_*.html  ← HTML-звіт
+```
+
+```bash
+# Windows 11 — інсталятор
+# Запустіть scanxss-setup.exe і слідуйте інструкціям
+# Встановлюється в C:\Program Files\ScanXSS\
 ```
 
 ---
@@ -188,7 +195,58 @@ scanxss -u URL [опції]
 
 ---
 
-## Збірка
+---
+
+## Windows GUI
+
+### Інтерфейс
+
+Графічний застосунок для Windows 11 з повним функціоналом CLI-сканера.
+
+| Елемент | Опис |
+|---|---|
+| **Вкладка Vulnerabilities** | Кольорові рядки по severity, розгортаються по кліку |
+| **Вкладка Scan Log** | Повний лог з timestamp у кожному рядку |
+| **Progress bar** | Відображає прогрес crawl та attack фаз |
+| **Export** | HTML · JSON · CSV через діалог збереження |
+| **History** | Перегляд попередніх сканувань з БД |
+
+### Встановлення (готовий інсталятор)
+
+1. Завантажити `scanxss-setup.exe`
+2. Запустити від імені адміністратора
+3. Слідувати інструкціям майстра встановлення
+4. Ярлик з'явиться на робочому столі та в меню Пуск
+
+Встановлюється в `C:\Program Files\ScanXSS\`  
+БД зберігається поряд з виконуваним файлом: `scan.db`
+
+### Збірка Windows GUI з вихідного коду (на Linux)
+
+```bash
+# Залежності
+sudo apt install mingw-w64 nsis tcl
+
+# Збірка
+cd windows/
+make -f Makefile.win           # → scanxss-gui.exe
+make -f Makefile.win installer # → installer/scanxss-setup.exe
+```
+
+Якщо `vendor/sqlite3.c` відсутній — `make` завантажить автоматично.
+
+### Технічний стек Windows GUI
+
+| Компонент | Реалізація |
+|---|---|
+| HTTP | WinHttp.dll (вбудований у Windows, без libcurl) |
+| БД | SQLite 3.45.1 amalgamation (статично в .exe) |
+| GUI | Win32 API + comctl32 |
+| DPI | PerMonitorV2 aware (коректно на 125%/150%) |
+| Розмір | ~1 MB (без зовнішніх DLL) |
+| AV | XOR-шифрування payload-рядків (обхід false positive) |
+
+## Збірка (Linux / macOS)
 
 ```bash
 make           # збірка
