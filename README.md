@@ -1,268 +1,261 @@
-# ScanXSS v1.3.0
+<div align="center">
 
-> **Автоматизований сканер вразливостей веб-застосунків**  
-> Linux · macOS · BSD · **Windows 11 (GUI)**
+# 🔍 ScanXSS
+
+**Автоматизований сканер вразливостей веб-застосунків**
+
+[![Version](https://img.shields.io/badge/version-1.3.1-blue.svg)](https://github.com/ROOT-BSD/scanxss/releases)
+[![License](https://img.shields.io/badge/license-GPL--2.0-green.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/ROOT-BSD/scanxss)
+[![Tests](https://img.shields.io/badge/tests-26%2F26%20✅-brightgreen.svg)](https://github.com/ROOT-BSD/scanxss)
+
+*© 2026 root_bsd · [root_bsd@itprof.net.ua](mailto:root_bsd@itprof.net.ua)*
+
+</div>
 
 ---
 
-## Можливості
+## Про проект
+
+ScanXSS — CLI та GUI сканер вразливостей веб-застосунків написаний на мові **C99**.  
+Підтримує **Linux**, **macOS** (нативний Cocoa GUI) та **Windows 11** (Win32 GUI).  
+Без зовнішніх рантайм-залежностей — SQLite входить до проекту.
+
+---
+
+## ✨ Можливості
 
 | | |
 |---|---|
-| 🕷 **Crawling** | BFS по всіх субдоменах, gzip/br, Chrome UA |
-| 🔍 **7 модулів атак** | XSS · SQLi · LFI · RCE · SSRF · Redirect · CRLF |
+| 🕷 **Crawling** | BFS по всіх субдоменах, gzip/deflate, Chrome User-Agent |
+| 🔍 **7 модулів атак** | XSS · SQLi · LFI · RCE · SSRF · Open Redirect · CRLF |
 | 📋 **4 режими** | Full · Resume · Rescan · Retarget |
-| 🗄 **SQLite БД** | Вся історія сканувань, повторні перевірки |
-| 📄 **3 формати звітів** | HTML · JSON · TXT |
-| 📚 **Пояснення** | Для Critical/High: опис + вплив + виправлення + посилання |
-| 🖥 **Windows GUI** | Win32 інтерфейс, WinHttp, інсталятор NSIS |
+| 🗄 **SQLite БД** | Повна історія сканувань, повторні перевірки |
+| 📄 **3 формати звітів** | HTML (інтерактивний) · JSON · TXT |
+| 📚 **Пояснення** | Critical/High: опис + вплив + виправлення + OWASP/CWE посилання |
+| 🖥 **macOS GUI** | Нативний Cocoa, темна тема, вбудований термінал, зелений прогрес |
+| 🪟 **Windows GUI** | Win32 + WinHttp, ~1MB без DLL, DPI-aware, NSIS інсталятор |
 
 ---
 
-## Швидкий старт
+## 📦 Структура репозиторію
+
+```
+scanxss/
+├── linux/                ← CLI сканер (Linux / BSD)
+│   ├── src/              — 10 модулів C99
+│   ├── include/          — scanxss.h, vuln_info.h (OWASP/CWE база)
+│   ├── modules/          — mod_xss, mod_sqli, mod_misc, mod_ssrf
+│   ├── vendor/           — sqlite3.h (bundled)
+│   ├── tests/            — 26 інтеграційних тестів
+│   └── Makefile
+│
+├── macos/                ← CLI + GUI для macOS
+│   ├── src/              — CLI вихідний код
+│   ├── gui/              — Cocoa GUI (AppDelegate.m, Info.plist)
+│   │   └── resources/    — AppIcon.icns (всі розміри)
+│   └── INSTALL.sh        — повний автоматичний інсталятор
+│
+├── windows/              ← GUI для Windows 11
+│   ├── src/              — gui.c, scanner.c, db.c, export.c
+│   ├── resources/        — app.ico, app.rc
+│   ├── installer/        — NSIS скрипт + scanxss-setup.exe
+│   └── Makefile.win      — cross-compile з Linux
+│
+└── docs/
+    ├── scanxss_documentation.docx
+    └── sample_report.html
+```
+
+---
+
+## 🚀 Швидкий старт
+
+### Linux
 
 ```bash
-# Ubuntu/Debian
 sudo apt install build-essential libcurl4-openssl-dev libssl-dev
-make
-./scanxss -u https://site.com/
+cd linux && make
+./scanxss -u https://target.com/
 ```
+
+### macOS (CLI + GUI)
 
 ```bash
-# macOS
-brew install openssl curl
-make
-./scanxss -u https://site.com/
+tar xf scanxss-1.3.1-macos.tar.gz
+cd scanxss-1.3.1-macos
+sudo bash INSTALL.sh
 ```
 
-Після запуску:
-```
-../DB_SCAN/scan.db                           ← база даних
-../report/site.com/site.com_20250401_*.html  ← HTML-звіт
-```
+Інсталятор автоматично:
+- встановить Homebrew (якщо немає)
+- встановить `openssl` та `curl`
+- скомпілює нативний **arm64/x86_64** бінарник
+- встановить `/Applications/ScanXSS.app`
+- додасть `scanxss` до `PATH`
 
-```bash
-# Windows 11 — інсталятор
-# Запустіть scanxss-setup.exe і слідуйте інструкціям
-# Встановлюється в C:\Program Files\ScanXSS\
-```
+### Windows
+
+Запустити `windows/installer/scanxss-setup.exe` → встановлення в `C:\Program Files\ScanXSS\`
 
 ---
 
-## Використання
+## 🖥 macOS GUI
+
+<div align="center">
+
+| Ліва панель | Права панель |
+|---|---|
+| URL, Depth, Rate, Timeout | Термінальний вивід |
+| Режим сканування | Кольоровий лог (ANSI) |
+| Scope, Cookies | Авто-прокрутка |
+| 7 модулів (зелені чекбокси) | |
+| Прогрес — 20 зелених блоків | |
+| Start / Stop / Open Report | |
+
+</div>
+
+**Режими** (dropdown): Full · Rescan · Resume · Retarget  
+**Після завершення**: браузер відкривається автоматично з HTML-звітом  
+**Шляхи**: `~/.scanxss/scan.db` · `~/.scanxss/report/<host>/`
+
+---
+
+## 📟 CLI — використання
 
 ```
 scanxss -u URL [опції]
 ```
 
-### Основні параметри
-
-```
--u URL              Ціль сканування (обов'язково)
--d N                Глибина crawling [3]
--t N                HTTP timeout, секунди [15]
--l N                Макс. кількість URL [256]
--r N                Rate limit, запитів/сек [10]
--s SCOPE            Зона: subdomain|domain|folder|url [subdomain]
--m MODULES          Модулі через кому: xss,sqli,lfi,rce,ssrf,redirect,crlf
--v                  Детальний вивід
-```
-
-### Мережа
-
-```
--c COOKIES          Cookies (для авторизованих сканувань)
--a USER_AGENT       Кастомний User-Agent
--p PROXY            HTTP проксі: http://host:port
-```
-
-### База даних
-
-```
---list-scans        Список попередніх сканувань
---show-scan ID      Деталі сканування
---delete-scan ID    Видалити сканування
---wipe              Видалити всі дані цілі
---db FILE           Кастомний шлях до БД
---report-dir DIR    Кастомна директорія звітів
-```
+| Параметр | За замовч. | Опис |
+|---|---|---|
+| `-u URL` | — | Ціль сканування (обов'язково) |
+| `-d N` | 3 | Глибина crawling |
+| `-r N` | 10 | Rate limit (req/s) |
+| `-t N` | 15 | HTTP timeout (сек) |
+| `-s SCOPE` | subdomain | `subdomain` · `domain` · `folder` · `url` |
+| `-m MODULES` | всі | `xss,sqli,lfi,rce,ssrf,redirect,crlf` |
+| `-c COOKIES` | — | Cookies для авторизованих сканувань |
+| `-p PROXY` | — | HTTP проксі (`http://host:port`) |
+| `-v` | — | Детальний вивід |
+| `--resume` | — | Продовжити перерване сканування |
+| `--rescan` | — | Нова атака на збережений crawl |
+| `--retarget` | — | Перевірка чи виправлені вразливості |
+| `--list-scans` | — | Список сканувань з БД |
+| `--wipe` | — | Видалити всі дані цілі |
 
 ---
 
-## Режими сканування
+## 🔄 Режими сканування
 
-### FULL (за замовчуванням)
-Повний crawl + всі модулі.
+| Режим | Прапор | Опис |
+|---|---|---|
+| **Full** | *(без прапора)* | Повний crawl + всі модулі атак |
+| **Resume** | `--resume` | Продовжити перерване |
+| **Rescan** | `--rescan` | Нові атаки на збережений crawl (без повторного crawl) |
+| **Retarget** | `--retarget` | Тільки раніше вразливі URL/форми |
 
-```bash
-./scanxss -u https://site.com/
 ```
+$ ./scanxss -u https://site.com/ --retarget
 
-### RESUME — продовження
-Відновлює перерване сканування.
-
-```bash
-./scanxss -u https://site.com/ --resume
-```
-
-### RESCAN — нова атака на збережений crawl
-Не витрачає час на повторний crawl — атакує з нових payload-ів.
-
-```bash
-./scanxss -u https://site.com/ --rescan
-```
-
-### RETARGET — перевірка виправлень
-Тестує **тільки** раніше вразливі ендпоінти. Показує статус кожної вразливості:
-
-```bash
-./scanxss -u https://site.com/ --retarget
-```
-```
-[ACTIVE] sqli  https://site.com/login  param=id    ← ще не виправлено
+[ACTIVE] sqli  https://site.com/login  param=id    ← не виправлено
 [ FIXED] xss   https://site.com/search param=q     ← виправлено ✅
 ```
 
 ---
 
-## Модулі атак
+## 🎯 Модулі атак
 
-| Модуль | Severity | CWE | CVSS |
-|---|---|---|---|
-| `sqli` — SQL Injection | Critical (5) | CWE-89 | 9.8 |
-| `lfi` — Local File Inclusion | Critical (5) | CWE-22 | 8.6 |
-| `rce` — Remote Code Execution | Critical (5) | CWE-78 | 9.8 |
-| `ssrf` — Server-Side Request Forgery | High (4) | CWE-918 | 8.6 |
-| `xss` — Cross-Site Scripting | High (4) | CWE-79 | 7.4 |
-| `redirect` — Open Redirect | Medium (3) | CWE-601 | 6.1 |
-| `crlf` — CRLF Injection | Medium (3) | CWE-93 | 6.1 |
+| Модуль | Тип | Severity | CWE | CVSS |
+|---|---|---|---|---|
+| `rce` | Remote Code Execution | Critical | CWE-78, CWE-94 | 9.8 |
+| `sqli` | SQL Injection | Critical | CWE-89 | 9.8 |
+| `lfi` | Local File Inclusion | Critical | CWE-22, CWE-98 | 8.6 |
+| `ssrf` | Server-Side Request Forgery | High | CWE-918 | 8.6 |
+| `xss` | Cross-Site Scripting | High | CWE-79 | 7.4 |
+| `redirect` | Open Redirect | Medium | CWE-601 | 6.1 |
+| `crlf` | CRLF Injection | Medium | CWE-93 | 6.1 |
 
-```bash
-# Тільки критичні
-./scanxss -u https://site.com/ -m sqli,lfi,rce
+---
+
+## 📄 HTML-звіт
+
+Для **Critical** та **High** вразливостей кожна картка містить:
+
+```
+┌─ ● SQL Injection  site.com/login → id  [Critical CVSS 9.8] ▶
+│
+│  🔎 Що це таке       — опис вразливості українською
+│  💥 Можливий вплив   — наслідки для системи
+│  🛡 Як виправити     — конкретні кроки усунення
+│
+│  [🔗 OWASP A03:2021] [🔗 CWE-89] [🔗 PortSwigger] [🔗 Cheat Sheet]
+└─
 ```
 
 ---
 
-## HTML-звіт
+## 🗄 Шляхи файлів
 
-Для кожної Critical/High вразливості автоматично вставляються:
-
-- **🔎 Що це таке** — пояснення українською
-- **💥 Можливий вплив** — що може зробити зловмисник
-- **🛡 Як виправити** — конкретні кроки
-- **CVSS score**
-- **Інтерактивні посилання** — клікабельні кнопки на:
-  - OWASP Top 10 / Testing Guide
-  - CWE (Common Weakness Enumeration)
-  - PortSwigger Web Security Academy
-  - OWASP Cheat Sheet Series
+| ОС | База даних | Звіти |
+|---|---|---|
+| Linux / BSD | `../DB_SCAN/scan.db` | `../report/<host>/` |
+| macOS | `~/.scanxss/scan.db` | `~/.scanxss/report/<host>/` |
+| Windows | поряд з `.exe` | поряд з `.exe` |
 
 ---
 
-## Шляхи файлів
-
-| Ресурс | Шлях (відносно бінарника) |
-|---|---|
-| База даних | `../DB_SCAN/scan.db` |
-| HTML-звіт | `../report/<hostname>/<hostname>_<timestamp>.html` |
-| JSON-звіт | `../report/<hostname>/<hostname>_<timestamp>.json` |
-| TXT-звіт | `../report/<hostname>/<hostname>_<timestamp>.txt` |
-
----
-
-## Приклади
+## 🔧 Збірка з вихідного коду
 
 ```bash
-# З авторизацією
-./scanxss -u https://site.com/ \
-    -c "session=abc123; csrf=xyz" \
-    -d 5 -l 512 -v
+# Linux / macOS CLI
+cd linux && make && make test     # 26/26 тестів ✅
 
-# Тільки SQLi через проксі Burp
-./scanxss -u https://site.com/ -m sqli \
-    -p http://127.0.0.1:8080
+# macOS GUI (запускати на Mac)
+cd macos && sudo bash INSTALL.sh
+
+# Windows GUI (cross-compile з Linux)
+sudo apt install mingw-w64 nsis tcl
+cd windows && make -f Makefile.win installer
+```
+
+---
+
+## 📋 Приклади
+
+```bash
+# Базове сканування
+./scanxss -u https://site.com/
+
+# З авторизацією, глибина 5
+./scanxss -u https://site.com/ -d 5 -c "session=abc123" -v
+
+# Тільки критичні модулі через Burp
+./scanxss -u https://site.com/ -m sqli,lfi,rce -p http://127.0.0.1:8080
+
+# Повільне сканування (обхід rate limiting)
+./scanxss -u https://site.com/ -r 2 -t 30
 
 # Перевірка що вразливості виправлені
 ./scanxss -u https://site.com/ --retarget
 
 # Переглянути всі сканування
 ./scanxss -u https://site.com/ --list-scans
-
-# Переглянути знахідки сканування #3
-./scanxss -u https://site.com/ --show-scan 3
 ```
 
 ---
 
----
-
-## Windows GUI
-
-### Інтерфейс
-
-Графічний застосунок для Windows 11 з повним функціоналом CLI-сканера.
-
-| Елемент | Опис |
-|---|---|
-| **Вкладка Vulnerabilities** | Кольорові рядки по severity, розгортаються по кліку |
-| **Вкладка Scan Log** | Повний лог з timestamp у кожному рядку |
-| **Progress bar** | Відображає прогрес crawl та attack фаз |
-| **Export** | HTML · JSON · CSV через діалог збереження |
-| **History** | Перегляд попередніх сканувань з БД |
-
-### Встановлення (готовий інсталятор)
-
-1. Завантажити `scanxss-setup.exe`
-2. Запустити від імені адміністратора
-3. Слідувати інструкціям майстра встановлення
-4. Ярлик з'явиться на робочому столі та в меню Пуск
-
-Встановлюється в `C:\Program Files\ScanXSS\`  
-БД зберігається поряд з виконуваним файлом: `scan.db`
-
-### Збірка Windows GUI з вихідного коду (на Linux)
-
-```bash
-# Залежності
-sudo apt install mingw-w64 nsis tcl
-
-# Збірка
-cd windows/
-make -f Makefile.win           # → scanxss-gui.exe
-make -f Makefile.win installer # → installer/scanxss-setup.exe
-```
-
-Якщо `vendor/sqlite3.c` відсутній — `make` завантажить автоматично.
-
-### Технічний стек Windows GUI
-
-| Компонент | Реалізація |
-|---|---|
-| HTTP | WinHttp.dll (вбудований у Windows, без libcurl) |
-| БД | SQLite 3.45.1 amalgamation (статично в .exe) |
-| GUI | Win32 API + comctl32 |
-| DPI | PerMonitorV2 aware (коректно на 125%/150%) |
-| Розмір | ~1 MB (без зовнішніх DLL) |
-| AV | XOR-шифрування payload-рядків (обхід false positive) |
-
-## Збірка (Linux / macOS)
-
-```bash
-make           # збірка
-make test      # 26 інтеграційних тестів
-make clean     # очистити
-make help      # довідка
-```
-
-**Залежності (Debian/Ubuntu):** `build-essential libcurl4-openssl-dev libssl-dev`  
-**Залежності (macOS):** `brew install openssl curl`  
-**SQLite:** входить до проекту (`vendor/sqlite3.h`) — `libsqlite3-dev` не потрібен
-
----
-
-## Ліцензія
+## ⚖️ Ліцензія
 
 **GPL-2.0** — тільки для авторизованого тестування безпеки.
 
-&copy; 2025 root_bsd — [mglushak@gmail.com](mailto:mglushak@gmail.com)
+> Несанкціоноване сканування є незаконним та переслідується відповідно до законодавства.
+
+---
+
+<div align="center">
+
+© 2026 **root_bsd** · [root_bsd@itprof.net.ua](mailto:root_bsd@itprof.net.ua)  
+[https://github.com/ROOT-BSD/scanxss](https://github.com/ROOT-BSD/scanxss)
+
+</div>
