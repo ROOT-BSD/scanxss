@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 root_bsd (mglushak@gmail.com)
+ * Copyright (c) 2026 root_bsd <root_bsd@itprof.net.ua>
  *
  * This file is part of ScanXSS — Web Vulnerability Scanner.
  *
@@ -13,6 +13,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
+ * Source: https://github.com/ROOT-BSD/scanxss
  * SPDX-License-Identifier: GPL-2.0
  */
 
@@ -40,7 +41,7 @@
 
 /* ── Version ─────────────────────────────────────────────── */
 #define APP_NAME     L"ScanXSS"
-#define APP_VERSION  L"1.3.0"
+#define APP_VERSION  L"1.3.1"
 #define APP_TITLE    L"ScanXSS v1.3.0 — Web Vulnerability Scanner"
 #define APP_CLASS    L"ScanXSSMainWnd"
 
