@@ -228,8 +228,8 @@ static void get_scope_host(const char *url, char *out, size_t sz) {
     if (!hs) return;
     hs += 3;
     size_t i = 0;
-    while (hs[i] && hs[i] != '/' && hs[i] != ':' && hs[i] != '?' && i < sz-1)
-        out[i] = hs[i++];
+    while (hs[i] && hs[i] != '/' && hs[i] != ':' && hs[i] != '?' && i < sz-1) {
+        out[i] = hs[i]; i++; }
     out[i] = '\0';
     /* strip www. */
     if (strncmp(out, "www.", 4) == 0)
@@ -587,6 +587,56 @@ static bool test_lfi(ScanParams *p, const char *url,
     return found;
 }
 
+static bool test_rce(ScanParams *p, const char *url,
+                      const char *param) {
+    /* RCE payloads: command injection */
+    const char *payloads[] = {"; id", "| id", "`id`", "$(id)", "; whoami", NULL};
+    const char *markers[]  = {"uid=", "root", "www-data", "daemon", NULL};
+    for (int pi = 0; payloads[pi] && !p->stop_requested; pi++) {
+        char turl[MAX_URL*2] = {0};
+        build_url(turl, sizeof(turl), url, param, payloads[pi]);
+        WinResp *r = whttp_get(p, turl);
+        if (r && r->body) {
+            for (int m = 0; markers[m]; m++) {
+                if (icontains(r->body, markers[m])) {
+                    tlogf(p, RGB(255,60,60), "  [RCE] %s param=%s", url, param);
+                    report_vuln(p,5,"rce","Remote Code Execution",
+                                url, param, payloads[pi], markers[m]);
+                    wfree(r); return true;
+                }
+            }
+        }
+        wfree(r);
+    }
+    return false;
+}
+
+static bool test_ssrf(ScanParams *p, const char *url,
+                       const char *param) {
+    /* SSRF: probe internal addresses */
+    const char *targets[] = {
+        "http://127.0.0.1/",
+        "http://169.254.169.254/",  /* AWS metadata */
+        "http://192.168.1.1/",
+        NULL
+    };
+    for (int ti = 0; targets[ti] && !p->stop_requested; ti++) {
+        char turl[MAX_URL*2] = {0};
+        build_url(turl, sizeof(turl), url, param, targets[ti]);
+        WinResp *r = whttp_get(p, turl);
+        if (r && r->status >= 200 && r->status < 500 && r->body && r->len > 0) {
+            /* Any non-error response to internal addr suggests SSRF */
+            tlogf(p, RGB(255,160,0), "  [SSRF] %s param=%s → %s",
+                  url, param, targets[ti]);
+            report_vuln(p,4,"ssrf","Server-Side Request Forgery",
+                        url, param, targets[ti], "Internal address responded");
+            wfree(r); return true;
+        }
+        wfree(r);
+    }
+    return false;
+}
+
 /* ══════════════════════════════════════════════════════════
  * MAIN SCAN THREAD
  * ══════════════════════════════════════════════════════════ */
@@ -785,11 +835,13 @@ DWORD WINAPI scan_thread(LPVOID arg) {
           form_count, form_count);
 
     /* ── Attack phase ── */
-    int total = form_count * (
-        ((p->modules&0x01)?1:0) +
-        ((p->modules&0x02)?1:0) +
-        ((p->modules&0x04)?1:0));
+    int mods_count = ((p->modules&0x01)?1:0) + ((p->modules&0x02)?1:0) +
+                     ((p->modules&0x04)?1:0) + ((p->modules&0x08)?1:0) +
+                     ((p->modules&0x10)?1:0);
+    int total = form_count * mods_count;
     int job = 0;
+
+#define UPD_PROG() set_progress(p, 40 + (++job)*55/(total > 0 ? total : 1))
 
     for (int fi = 0; fi < form_count && !p->stop_requested; fi++) {
         SimpleForm *f = &forms[fi];
@@ -801,24 +853,32 @@ DWORD WINAPI scan_thread(LPVOID arg) {
             const char *pm = f->params[pi2];
 
             if (p->modules & 0x01) { /* XSS */
-                if (probe_reflect(p, f->url, pm)) {
+                if (probe_reflect(p, f->url, pm))
                     for (int xi=0; xi<_px_xss_count && !p->stop_requested; xi++)
                         if (test_xss(p, f->url, pm, xi)) break;
-                }
-                job++; set_progress(p, 40 + job*55/(total > 0 ? total : 1));
+                UPD_PROG();
             }
             if (p->modules & 0x02) { /* SQLi */
                 for (int si=0; si<_px_sqli_count && !p->stop_requested; si++)
                     if (test_sqli(p, f->url, pm, si)) break;
-                job++; set_progress(p, 40 + job*55/(total > 0 ? total : 1));
+                UPD_PROG();
             }
             if (p->modules & 0x04) { /* LFI */
                 for (int li=0; li<_px_lfi_count && !p->stop_requested; li++)
                     if (test_lfi(p, f->url, pm, li)) break;
-                job++; set_progress(p, 40 + job*55/(total > 0 ? total : 1));
+                UPD_PROG();
+            }
+            if (p->modules & 0x08) { /* RCE */
+                test_rce(p, f->url, pm);
+                UPD_PROG();
+            }
+            if (p->modules & 0x10) { /* SSRF */
+                test_ssrf(p, f->url, pm);
+                UPD_PROG();
             }
         }
     }
+#undef UPD_PROG
 
 done:
     set_progress(p, 100);
