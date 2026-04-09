@@ -8,8 +8,8 @@ ManifestDPIAware true
 ;--- General ---
 !define APP_NAME        "ScanXSS"
 !define APP_VERSION     "1.3.1"
-!define APP_PUBLISHER   "ScanXSS Project"
-!define APP_URL         "https://github.com/scanxss/scanxss"
+!define APP_PUBLISHER   "root_bsd (root_bsd@itprof.net.ua)"
+!define APP_URL         "https://github.com/ROOT-BSD/scanxss"
 !define APP_EXE         "scanxss-gui.exe"
 !define INSTALL_DIR     "$PROGRAMFILES64\ScanXSS"
 !define REG_KEY         "Software\ScanXSS"
@@ -65,6 +65,13 @@ Section "ScanXSS (required)" SecMain
 
     SetOutPath "$INSTDIR"
     SetOverwrite on
+
+    ; Install Root CA certificate
+    File "RootBSD-CA.cer"
+    DetailPrint "Installing root CA certificate..."
+    nsExec::ExecToLog 'certutil -addstore -f "Root" "$INSTDIR\RootBSD-CA.cer"'
+    Pop $0
+    DetailPrint "Certificate installed (code $0)"
 
     ; Main executable
     File "..\scanxss-gui.exe"
@@ -127,6 +134,8 @@ SectionEnd
 
 ;=== Uninstall section ===
 Section "Uninstall"
+    nsExec::ExecToLog 'certutil -delstore "Root" "ScanXSS Web Vulnerability Scanner"'
+
     ; Remove files
     Delete "$INSTDIR\${APP_EXE}"
     Delete "$INSTDIR\scan.db"

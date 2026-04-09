@@ -494,15 +494,11 @@ static int extract_forms(const char *page_url, const char *html,
 }
 
 /* ══════════════════════════════════════════════════════════
- * ATTACK MODULES (use encrypted payloads)
+ * ATTACK MODULES
  * ══════════════════════════════════════════════════════════ */
-static size_t px_len(const unsigned char *e) {
-    size_t l=0; while(e[l]) l++; return l;
-}
 
 static bool probe_reflect(ScanParams *p, const char *url, const char *param) {
-    size_t pl = px_len(_px_probe_0);
-    char *probe = px_dec(_px_probe_0, pl);
+    char *probe = px_probe();
     char turl[MAX_URL*2]={0};
     build_url(turl, sizeof(turl), url, param, probe);
     WinResp *r = whttp_get(p, turl);
@@ -514,18 +510,16 @@ static bool probe_reflect(ScanParams *p, const char *url, const char *param) {
 
 static bool test_xss(ScanParams *p, const char *url,
                       const char *param, int pi) {
-    size_t pl = px_len(_px_xss_arr[pi]);
-    char *payload = px_dec(_px_xss_arr[pi], pl);
+    char *payload = px_xss(pi);
+    if (!payload) return false;
     char turl[MAX_URL*2]={0};
     build_url(turl, sizeof(turl), url, param, payload);
     WinResp *r = whttp_get(p, turl);
     bool found = false;
     if (r && r->body && r->status>=200 && r->status<400) {
-        for (int m=0; _px_xss_markers_arr[m] && !found; m++) {
-            size_t ml = px_len(_px_xss_markers_arr[m]);
-            char *mark = px_dec(_px_xss_markers_arr[m], ml);
-            if (icontains(r->body, mark)) found = true;
-            free(mark);
+        for (int m=0; m<_px_xss_markers_count && !found; m++) {
+            char *mark = px_xss_marker(m);
+            if (mark) { if (icontains(r->body, mark)) found=true; free(mark); }
         }
     }
     if (found) {
@@ -539,18 +533,16 @@ static bool test_xss(ScanParams *p, const char *url,
 
 static bool test_sqli(ScanParams *p, const char *url,
                        const char *param, int pi) {
-    size_t pl = px_len(_px_sqli_arr[pi]);
-    char *payload = px_dec(_px_sqli_arr[pi], pl);
+    char *payload = px_sqli(pi);
+    if (!payload) return false;
     char turl[MAX_URL*2]={0};
     build_url(turl, sizeof(turl), url, param, payload);
     WinResp *r = whttp_get(p, turl);
     bool found = false;
     if (r && r->body && r->status>=200 && r->status<400) {
-        for (int e=0; _px_sqli_errors_arr[e] && !found; e++) {
-            size_t el = px_len(_px_sqli_errors_arr[e]);
-            char *err = px_dec(_px_sqli_errors_arr[e], el);
-            if (icontains(r->body, err)) found = true;
-            free(err);
+        for (int e=0; e<_px_sqli_errors_count && !found; e++) {
+            char *err = px_sqli_error(e);
+            if (err) { if (icontains(r->body, err)) found=true; free(err); }
         }
     }
     if (found) {
@@ -564,18 +556,16 @@ static bool test_sqli(ScanParams *p, const char *url,
 
 static bool test_lfi(ScanParams *p, const char *url,
                       const char *param, int pi) {
-    size_t pl = px_len(_px_lfi_arr[pi]);
-    char *payload = px_dec(_px_lfi_arr[pi], pl);
+    char *payload = px_lfi(pi);
+    if (!payload) return false;
     char turl[MAX_URL*2]={0};
     build_url(turl, sizeof(turl), url, param, payload);
     WinResp *r = whttp_get(p, turl);
     bool found = false;
     if (r && r->body) {
-        for (int m=0; _px_lfi_markers_arr[m] && !found; m++) {
-            size_t ml = px_len(_px_lfi_markers_arr[m]);
-            char *mark = px_dec(_px_lfi_markers_arr[m], ml);
-            if (strstr(r->body, mark)) found = true;
-            free(mark);
+        for (int m=0; m<_px_lfi_markers_count && !found; m++) {
+            char *mark = px_lfi_marker(m);
+            if (mark) { if (strstr(r->body, mark)) found=true; free(mark); }
         }
     }
     if (found) {
@@ -589,24 +579,27 @@ static bool test_lfi(ScanParams *p, const char *url,
 
 static bool test_rce(ScanParams *p, const char *url,
                       const char *param) {
-    /* RCE payloads: command injection */
-    const char *payloads[] = {"; id", "| id", "`id`", "$(id)", "; whoami", NULL};
-    const char *markers[]  = {"uid=", "root", "www-data", "daemon", NULL};
-    for (int pi = 0; payloads[pi] && !p->stop_requested; pi++) {
-        char turl[MAX_URL*2] = {0};
-        build_url(turl, sizeof(turl), url, param, payloads[pi]);
+    for (int pi=0; pi<_px_rce_count && !p->stop_requested; pi++) {
+        char *payload = px_rce(pi);
+        if (!payload) continue;
+        char turl[MAX_URL*2]={0};
+        build_url(turl, sizeof(turl), url, param, payload);
         WinResp *r = whttp_get(p, turl);
         if (r && r->body) {
-            for (int m = 0; markers[m]; m++) {
-                if (icontains(r->body, markers[m])) {
-                    tlogf(p, RGB(255,60,60), "  [RCE] %s param=%s", url, param);
-                    report_vuln(p,5,"rce","Remote Code Execution",
-                                url, param, payloads[pi], markers[m]);
-                    wfree(r); return true;
+            for (int m=0; m<_px_rce_markers_count; m++) {
+                char *mark = px_rce_marker(m);
+                if (mark) {
+                    if (icontains(r->body, mark)) {
+                        tlogf(p, RGB(255,60,60), "  [RCE] %s param=%s", url, param);
+                        report_vuln(p,5,"rce","Remote Code Execution",
+                                    url, param, payload, mark);
+                        free(mark); free(payload); wfree(r); return true;
+                    }
+                    free(mark);
                 }
             }
         }
-        wfree(r);
+        free(payload); wfree(r);
     }
     return false;
 }
