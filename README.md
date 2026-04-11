@@ -117,7 +117,7 @@ sudo bash INSTALL.sh
 
 **Режими** (dropdown): Full · Rescan · Resume · Retarget  
 **Після завершення**: браузер відкривається автоматично з HTML-звітом  
-**Шляхи**: `~/.scanxss/scan.db` · `~/.scanxss/report/<host>/`
+**Шляхи**: `~/.scanxss/scan.db` · `~/Desctop/report/<host>/`
 
 ---
 
@@ -200,7 +200,7 @@ $ ./scanxss -u https://site.com/ --retarget
 | ОС | База даних | Звіти |
 |---|---|---|
 | Linux / BSD | `../DB_SCAN/scan.db` | `../report/<host>/` |
-| macOS | `~/.scanxss/scan.db` | `~/.scanxss/report/<host>/` |
+| macOS | `~/.scanxss/scan.db` | `~/Desctop/report/<host>/` |
 | Windows | поряд з `.exe` | поряд з `.exe` |
 
 ---
