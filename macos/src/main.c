@@ -32,13 +32,12 @@ static void print_banner(void) {
 COL_RESET
 COL_BOLD
 "\n"
-"╔══════════════════════════════════════════════════╗\n"
-"║   %s v%s — Web Vulnerability Scanner   ║\n"
-"║   © 2026 root_bsd <root_bsd@itprof.net.ua>       ║\n"
-"║                     GPL-2.0                      ║\n"
-"╚══════════════════════════════════════════════════╝\n\n"
-COL_RESET,
-SCANXSS_NAME, SCANXSS_VERSION);
+"╔══════════════════════════════════════════════╗\n"
+"║  ScanXSS v1.3.1 — Web Vulnerability Scanner  ║\n"
+"║   © 2026 root_bsd <root_bsd@itprof.net.ua>   ║\n"
+"║                   GPL-2.0                    ║\n"
+"╚══════════════════════════════════════════════╝\n\n"
+COL_RESET);
 }
 
 static void print_usage(const char *prog) {

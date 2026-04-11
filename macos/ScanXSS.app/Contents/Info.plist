@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>             <string>ScanXSS</string>
+    <key>CFBundleDisplayName</key>      <string>ScanXSS</string>
+    <key>CFBundleIdentifier</key>       <string>com.mglushak.scanxss</string>
+    <key>CFBundleVersion</key>          <string>1.3.0</string>
+    <key>CFBundleShortVersionString</key><string>1.3.0</string>
+    <key>CFBundleExecutable</key>       <string>ScanXSS-gui</string>
+    <key>CFBundlePackageType</key>      <string>APPL</string>
+    <key>CFBundleIconFile</key>         <string>AppIcon</string>
+    <key>LSMinimumSystemVersion</key>   <string>12.0</string>
+    <key>NSHighResolutionCapable</key>  <true/>
+    <key>CFBundleIconFile</key>         <string>AppIcon</string>
+    <key>NSPrincipalClass</key>         <string>NSApplication</string>
+    <key>NSHumanReadableCopyright</key>
+        <string>Copyright 2025 root_bsd (mglushak@gmail.com). GPL-2.0.</string>
+</dict>
+</plist>
