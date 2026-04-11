@@ -117,7 +117,7 @@ sudo bash INSTALL.sh
 
 **Режими** (dropdown): Full · Rescan · Resume · Retarget  
 **Після завершення**: браузер відкривається автоматично з HTML-звітом  
-**Шляхи**: `~/.scanxss/scan.db` · `~/.scanxss/report/<host>/`
+**Шляхи**: `~/.scanxss/scan.db` · `~/Desctop/report/<host>/`
 
 ---
 
