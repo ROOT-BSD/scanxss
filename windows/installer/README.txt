@@ -1,4 +1,4 @@
-ScanXSS v1.3.0 — Web Vulnerability Scanner
+ScanXSS v1.3.1 — Web Vulnerability Scanner
 ==========================================
 
 QUICK START

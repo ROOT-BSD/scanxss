@@ -42,7 +42,7 @@
 /* ── Version ─────────────────────────────────────────────── */
 #define APP_NAME     L"ScanXSS"
 #define APP_VERSION  L"1.3.1"
-#define APP_TITLE    L"ScanXSS v1.3.0 — Web Vulnerability Scanner"
+#define APP_TITLE    L"ScanXSS v1.3.1 — Web Vulnerability Scanner"
 #define APP_CLASS    L"ScanXSSMainWnd"
 
 /* ── Window / Control IDs ─────────────────────────────────── */
@@ -78,8 +78,8 @@
 #define ID_RICH_LOG       1031
 #define ID_PROGRESS       1032
 #define ID_STATUS_BAR     1033
-#define ID_LABEL_STATS    1034
-#define ID_TAB_MAIN       1035
+#define ID_LABEL_STATS    1060
+#define ID_TAB_MAIN       1061
 
 /* ── Thread message codes ─────────────────────────────────── */
 #define WM_SCAN_LOG     (WM_USER + 100)
@@ -133,6 +133,8 @@ typedef struct {
     HWND     hwnd_log;
     HWND     hwnd_list;
     HWND     hwnd_progress;
+    HWND     hwnd_blocks[20];   /* green progress blocks */
+    int      block_count;
     HWND     hwnd_status;
     HWND     hwnd_tab;
     HFONT    font_ui;
@@ -146,6 +148,7 @@ typedef struct {
     bool     scanning;
     HANDLE   scan_thread;
     ScanParams *scan_params;
+    char      scan_target[2048]; /* URL of current/last scan */
     HIMAGELIST img_list;
 } AppState;
 
@@ -172,7 +175,6 @@ void db_show_history(HWND parent, AppState *app);
 
 /* export.c */
 int  export_html(AppState *app, const wchar_t *path);
-int  export_json(AppState *app, const wchar_t *path);
 int  export_csv(AppState *app, const wchar_t *path);
 
 #endif /* SCANXSS_WIN_H */

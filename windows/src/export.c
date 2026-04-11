@@ -57,8 +57,11 @@ int export_html(AppState *app, const wchar_t *path) {
               "</style></head><body>\n");
 
     time_t now=time(NULL); char ts[64]; strftime(ts,63,"%Y-%m-%d %H:%M:%S",localtime(&now));
-    fprintf(f,"<header><h1>🔍 ScanXSS — Звіт вразливостей</h1>"
-              "<p>Згенеровано: %s</p></header>\n",ts);
+    const char *target_url = (app->scan_params && app->scan_params->url[0])
+        ? app->scan_params->url : "—";
+    fprintf(f,"<header><h1>\xf0\x9f\x94\x8d ScanXSS — Report</h1>"
+              "<p>Target: %s</p><p>Generated: %s</p></header>\n",
+              target_url, ts);
     fprintf(f,"<div class='container'>\n");
     fprintf(f,"<div class='stats'>"
               "<div class='card%s'><div class='num'>%d</div><div class='lbl'>Вразливостей</div></div>"
@@ -88,43 +91,10 @@ int export_html(AppState *app, const wchar_t *path) {
         }
         fprintf(f,"</tbody></table>\n");
     }
-    fprintf(f,"</div>\n<footer>ScanXSS v1.3.0 | Web Vulnerability Scanner | GPL-2.0</footer>"
+    fprintf(f,"</div>\n<footer>ScanXSS v1.3.1 | Web Vulnerability Scanner | © 2026 root_bsd</footer>"
               "\n</body></html>\n");
     fclose(f);
     return 0;
-}
-
-static void json_esc_f(FILE *f, const char *s) {
-    for(;*s;s++) switch(*s){
-        case '"':  fputs("\\\"",f); break;
-        case '\\': fputs("\\\\",f); break;
-        case '\n': fputs("\\n",f);  break;
-        case '\r': fputs("\\r",f);  break;
-        default: if((unsigned char)*s<0x20) fprintf(f,"\\u%04x",(unsigned char)*s);
-                 else fputc(*s,f);
-    }
-}
-
-int export_json(AppState *app, const wchar_t *path) {
-    FILE *f=_wfopen(path,L"w,ccs=UTF-8");
-    if(!f) return -1;
-    fprintf(f,"{\n  \"scanner\": \"ScanXSS 1.3.0\",\n");
-    fprintf(f,"  \"vuln_count\": %d,\n", app->vuln_count);
-    fprintf(f,"  \"vulnerabilities\": [\n");
-    for(int i=0;i<app->vuln_count;i++) {
-        const VulnRecord *v=&app->vulns[i];
-        fprintf(f,"    {\n");
-        fprintf(f,"      \"type\": \""); json_esc_f(f,v->type); fprintf(f,"\",\n");
-        fprintf(f,"      \"severity\": %d,\n", v->severity);
-        fprintf(f,"      \"module\": \""); json_esc_f(f,v->module); fprintf(f,"\",\n");
-        fprintf(f,"      \"url\": \""); json_esc_f(f,v->url); fprintf(f,"\",\n");
-        fprintf(f,"      \"parameter\": \""); json_esc_f(f,v->parameter); fprintf(f,"\",\n");
-        fprintf(f,"      \"payload\": \""); json_esc_f(f,v->payload); fprintf(f,"\",\n");
-        fprintf(f,"      \"evidence\": \""); json_esc_f(f,v->evidence); fprintf(f,"\"\n");
-        fprintf(f,"    }%s\n", i<app->vuln_count-1?",":"");
-    }
-    fprintf(f,"  ]\n}\n");
-    fclose(f); return 0;
 }
 
 int export_csv(AppState *app, const wchar_t *path) {

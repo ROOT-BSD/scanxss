@@ -1,3 +1,4 @@
+#include <stdbool.h>
 /*
  * Copyright (c) 2026 root_bsd <root_bsd@itprof.net.ua>
  *
@@ -142,24 +143,49 @@ static INT_PTR CALLBACK HistoryDlgProc(HWND h,UINT m,WPARAM w,LPARAM l) {
             300,420,80,28,h,(HMENU)IDOK,NULL,NULL);
         return TRUE;
     }
-    if(m==WM_COMMAND && LOWORD(w)==IDOK) EndDialog(h,0);
-    if(m==WM_CLOSE) EndDialog(h,0);
+    if(m==WM_COMMAND && LOWORD(w)==IDOK) { DestroyWindow(h); return TRUE; }
+    if(m==WM_CLOSE) { DestroyWindow(h); return TRUE; }
     return FALSE;
 }
 
+/* Separate WndProc wrapper so WM_CLOSE from title bar works */
+static LRESULT CALLBACK HistoryWndProc(HWND h,UINT m,WPARAM w,LPARAM l) {
+    if(m==WM_CLOSE)   { DestroyWindow(h); return 0; }
+    if(m==WM_COMMAND && LOWORD(w)==IDOK) { DestroyWindow(h); return 0; }
+    if(m==WM_KEYDOWN && w==VK_ESCAPE)    { DestroyWindow(h); return 0; }
+    return DefWindowProcW(h,m,w,l);
+}
+
 void db_show_history(HWND parent, AppState *app) {
-    /* Create modeless dialog manually */
-    HWND dlg=CreateWindowExW(WS_EX_DLGMODALFRAME|WS_EX_TOPMOST,
-        L"#32770",L"Scan History",
-        WS_POPUP|WS_CAPTION|WS_SYSMENU|DS_CENTER,
-        100,100,710,480,parent,NULL,NULL,NULL);
-    if(!dlg) return;
-    HistoryDlgProc(dlg,WM_INITDIALOG,0,(LPARAM)app);
-    ShowWindow(dlg,SW_SHOW);
-    MSG msg;
-    while(IsWindow(dlg) && GetMessageW(&msg,NULL,0,0)) {
-        if(!IsDialogMessageW(dlg,&msg)) {
-            TranslateMessage(&msg); DispatchMessageW(&msg);
-        }
+    /* Register window class once */
+    static bool cls_reg = false;
+    if (!cls_reg) {
+        WNDCLASSEXW wc = {sizeof(wc)};
+        wc.lpfnWndProc   = HistoryWndProc;
+        wc.hInstance     = GetModuleHandleW(NULL);
+        wc.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
+        wc.lpszClassName = L"ScanXSSHistory";
+        wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
+        RegisterClassExW(&wc);
+        cls_reg = true;
     }
+    HWND dlg = CreateWindowExW(
+        WS_EX_DLGMODALFRAME|WS_EX_TOPMOST,
+        L"ScanXSSHistory", L"Scan History",
+        WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_VISIBLE,
+        100,100,730,500, parent, NULL,
+        GetModuleHandleW(NULL), NULL);
+    if (!dlg) return;
+    /* Build content */
+    HistoryDlgProc(dlg, WM_INITDIALOG, 0, (LPARAM)app);
+    ShowWindow(dlg, SW_SHOW);
+    /* Modal message loop */
+    EnableWindow(parent, FALSE);
+    MSG msg;
+    while (IsWindow(dlg) && GetMessageW(&msg,NULL,0,0)) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    EnableWindow(parent, TRUE);
+    SetForegroundWindow(parent);
 }

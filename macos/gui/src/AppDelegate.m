@@ -489,7 +489,7 @@
         NSURL *u=[NSURL URLWithString:self.urlField.stringValue];
         NSString *host=u.host?:@"";
         NSString *cmd=[NSString stringWithFormat:
-            @"ls -t \"%@/.scanxss/report/%@\"/*.html 2>/dev/null | head -1",
+            @"ls -t \"%@/Desktop/report/%@\"/*.html 2>/dev/null | head -1",
             NSHomeDirectory(), host];
         FILE *fp=popen(cmd.UTF8String,"r");
         if(fp){char buf[1024]={0};

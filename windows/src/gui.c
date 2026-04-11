@@ -20,17 +20,27 @@
 #include "scanxss_win.h"
 #include <richedit.h>
 
-/* ── Colours (Windows 11 light theme) ────────────────────── */
-#define BG_MAIN     RGB(249,250,251)
-#define BG_PANEL    RGB(255,255,255)
-#define BG_HEADER   RGB( 30, 58,138)   /* deep blue header */
-#define BG_LOG      RGB( 15, 23, 42)   /* dark log */
-#define FG_LOG      RGB(226,232,240)
-#define FG_HEADER   RGB(255,255,255)
-#define COL_ACCENT  RGB( 59,130,246)
-#define COL_BORDER  RGB(229,231,235)
-#define COL_SCAN_BTN RGB(22,163, 74)   /* green */
-#define COL_STOP_BTN RGB(220, 38, 38)  /* red */
+/* ── Colours (Light theme) ────────────────────────────────── */
+#define BG_MAIN      RGB(245,247,250)   /* main window — light grey */
+#define BG_PANEL     RGB(255,255,255)   /* left panel — white */
+#define BG_HEADER    RGB( 30, 58,138)   /* header strip — deep blue */
+#define BG_LOG       RGB( 10, 14, 26)   /* log area — dark */
+#define FG_LOG       RGB(226,232,240)   /* log text — light */
+#define FG_HEADER    RGB(255,255,255)   /* header text — white */
+#define FG_LABEL     RGB( 51, 65, 85)   /* label text — dark */
+#define FG_MAIN      RGB( 15, 23, 42)   /* general text — near black */
+#define COL_ACCENT   RGB( 37, 99,235)   /* accent blue */
+#define COL_UTIL_BTN RGB( 51, 65, 85)   /* util buttons dark slate */
+#define COL_EXPORT_BTN RGB( 30,64,175)  /* export — dark blue */
+#define COL_CLEAR_BTN  RGB(127, 29, 29)  /* clear — dark red */
+#define COL_HIST_BTN   RGB( 55, 48,163)  /* history — indigo */
+
+#define COL_BORDER   RGB(203,213,225)   /* border — light grey */
+#define COL_SCAN_BTN RGB( 21, 94,117)   /* start — dark teal */
+#define COL_STOP_BTN RGB(153, 27, 27)   /* stop — dark red */
+#define BG_EDIT      RGB(248,250,252)   /* edit boxes — very light */
+#define BG_CHECK     RGB(255,255,255)   /* checkboxes — white */
+#define COL_PANEL_BORDER RGB(226,232,240) /* panel separator */
 
 static AppState g_app;
 
@@ -42,9 +52,12 @@ static LRESULT CALLBACK BtnSubclass(HWND h, UINT msg, WPARAM w, LPARAM l) {
         HDC dc = BeginPaint(h, &ps);
         RECT rc; GetClientRect(h, &rc);
         int id = GetDlgCtrlID(h);
-        COLORREF bg = (id == ID_BTN_SCAN)  ? COL_SCAN_BTN :
-                      (id == ID_BTN_STOP)  ? COL_STOP_BTN :
-                                             COL_ACCENT;
+        COLORREF bg = (id == ID_BTN_SCAN)    ? COL_SCAN_BTN :
+                      (id == ID_BTN_STOP)    ? COL_STOP_BTN :
+                      (id == ID_BTN_EXPORT)  ? COL_EXPORT_BTN :
+                      (id == ID_BTN_HISTORY) ? COL_HIST_BTN :
+                      (id == ID_BTN_CLEAR)   ? COL_CLEAR_BTN :
+                                               COL_ACCENT;
         bool pressed = (SendMessage(h, BM_GETSTATE, 0, 0) & BST_PUSHED);
         if (pressed) bg = RGB(GetRValue(bg)-20, GetGValue(bg)-20, GetBValue(bg)-20);
 
@@ -53,12 +66,20 @@ static LRESULT CALLBACK BtnSubclass(HWND h, UINT msg, WPARAM w, LPARAM l) {
         DeleteObject(br);
 
         /* rounded rect */
-        HPEN pen = CreatePen(PS_NULL, 0, 0);
-        HPEN old = SelectObject(dc, pen);
-        SelectObject(dc, br);
-        RoundRect(dc, rc.left, rc.top, rc.right, rc.bottom, 10, 10);
-        SelectObject(dc, old);
+        /* Rounded rectangle with shadow border on light bg */
+        COLORREF border_c = RGB(
+            max(0, GetRValue(bg)-30),
+            max(0, GetGValue(bg)-30),
+            max(0, GetBValue(bg)-30));
+        HPEN pen = CreatePen(PS_SOLID, 1, border_c);
+        HBRUSH btn_br = CreateSolidBrush(bg);
+        HPEN old_pen = (HPEN)SelectObject(dc, pen);
+        HBRUSH old_br = (HBRUSH)SelectObject(dc, btn_br);
+        RoundRect(dc, rc.left, rc.top, rc.right, rc.bottom, 8, 8);
+        SelectObject(dc, old_pen);
+        SelectObject(dc, old_br);
         DeleteObject(pen);
+        DeleteObject(btn_br);
 
         /* text */
         SetBkMode(dc, TRANSPARENT);
@@ -142,92 +163,118 @@ static void build_ui(HWND hwnd) {
     if (!dpi) dpi = 96;
 #define S(x) MulDiv((x), dpi, 96)
 
-    int px = S(12), py = S(66);
+    int px = S(12);
     int pw = S(306);
+    /* Fixed absolute Y positions — no cumulative drift */
+    int LH = S(16);  /* label height */
+    int IH = S(26);  /* input height */
+    int G  = S(8);   /* gap label→input */
+    int SG = S(12);  /* section gap */
 
-    /* URL */
-    make_label(hwnd, f, L"Target URL:", px, py, pw); py += S(18);
-    make_edit(hwnd, f, ID_EDIT_URL, L"https://", px, py, pw, S(24)); py += S(30);
+    /* ── TARGET URL  y=70 ── */
+    int y_url_lbl = S(73);
+    make_label(hwnd, f, L"Target URL:", px, y_url_lbl, pw);
+    make_edit(hwnd, f, ID_EDIT_URL, L"https://", px, y_url_lbl+LH+G, pw, IH);
 
-    /* Depth / Rate / Timeout */
-    make_label(hwnd, f, L"Depth:", px,        py, S(78));
-    make_label(hwnd, f, L"Rate/s:", px+S(86), py, S(78));
-    make_label(hwnd, f, L"Timeout:", px+S(172),py, S(78)); py += S(16);
-    make_edit(hwnd, f, ID_EDIT_DEPTH,   L"3",  px,        py, S(78), S(24));
-    make_edit(hwnd, f, ID_EDIT_RATE,    L"10", px+S(86),  py, S(78), S(24));
-    make_edit(hwnd, f, ID_EDIT_TIMEOUT, L"15", px+S(172), py, S(78), S(24)); py += S(30);
+    /* ── DEPTH / RATE / TIMEOUT  y=132 ── */
+    int y_drt = y_url_lbl + LH + G + IH + SG;
+    make_label(hwnd, f, L"Depth:",   px,         y_drt, S(90));
+    make_label(hwnd, f, L"Rate/s:",  px+S(100),  y_drt, S(90));
+    make_label(hwnd, f, L"Timeout:", px+S(200),  y_drt, S(90));
+    make_edit(hwnd, f, ID_EDIT_DEPTH,   L"3",  px,         y_drt+LH+G, S(88), IH);
+    make_edit(hwnd, f, ID_EDIT_RATE,    L"10", px+S(100),  y_drt+LH+G, S(88), IH);
+    make_edit(hwnd, f, ID_EDIT_TIMEOUT, L"15", px+S(200),  y_drt+LH+G, S(88), IH);
 
-    /* Scope */
-    make_label(hwnd, f, L"Scope:", px, py, pw); py += S(16);
+    /* ── SCOPE  y=210 ── */
+    int y_scope = y_drt + LH + G + IH + SG;
+    make_label(hwnd, f, L"Scope:", px, y_scope, pw);
     HWND scope = CreateWindowW(L"COMBOBOX", NULL,
         WS_CHILD|WS_VISIBLE|WS_TABSTOP|CBS_DROPDOWNLIST,
-        px, py, S(220), S(160), hwnd, (HMENU)ID_COMBO_SCOPE, hi, NULL);
+        px, y_scope+LH+G, S(220), S(160), hwnd, (HMENU)ID_COMBO_SCOPE, hi, NULL);
     SendMessage(scope, WM_SETFONT, (WPARAM)f, TRUE);
     SendMessageW(scope, CB_ADDSTRING, 0, (LPARAM)L"subdomain (recommended)");
     SendMessageW(scope, CB_ADDSTRING, 0, (LPARAM)L"domain");
     SendMessageW(scope, CB_ADDSTRING, 0, (LPARAM)L"folder");
     SendMessageW(scope, CB_ADDSTRING, 0, (LPARAM)L"url");
     SendMessage(scope, CB_SETCURSEL, 0, 0);
-    py += S(30);
 
-    /* Cookies */
-    make_label(hwnd, f, L"Cookies (optional):", px, py, pw); py += S(16);
-    make_edit(hwnd, f, ID_EDIT_COOKIES, L"", px, py, pw, S(24)); py += S(30);
+    /* ── COOKIES  y=290 ── */
+    int y_cook = y_scope + LH + G + IH + SG;
+    make_label(hwnd, f, L"Cookies (optional):", px, y_cook, pw);
+    make_edit(hwnd, f, ID_EDIT_COOKIES, L"", px, y_cook+LH+G, pw, IH);
 
-    /* User-Agent */
-    make_label(hwnd, f, L"User-Agent:", px, py, pw); py += S(16);
+    /* ── USER-AGENT  y=368 ── */
+    int y_ua = y_cook + LH + G + IH + SG;
+    make_label(hwnd, f, L"User-Agent:", px, y_ua, pw);
     make_edit(hwnd, f, ID_EDIT_USERAGENT,
               L"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-              px, py, pw, S(24)); py += S(30);
+              px, y_ua+LH+G, pw, IH);
 
-    /* Attack modules */
-    make_label(hwnd, f, L"Attack Modules:", px, py, pw); py += S(20);
-    make_check(hwnd, f, L"XSS",      ID_CHECK_XSS,   px,        py, true);
-    make_check(hwnd, f, L"SQLi",     ID_CHECK_SQLI,  px+S(82),  py, true);
-    make_check(hwnd, f, L"LFI",      ID_CHECK_LFI,   px+S(164), py, true);
-    py += S(22);
-    make_check(hwnd, f, L"RCE",      ID_CHECK_RCE,   px,        py, true);
-    make_check(hwnd, f, L"SSRF",     ID_CHECK_SSRF,  px+S(82),  py, true);
-    make_check(hwnd, f, L"Redirect", ID_CHECK_REDIR, px+S(164), py, false);
-    py += S(22);
-    make_check(hwnd, f, L"CRLF",     ID_CHECK_CRLF,  px,        py, false);
-    py += S(26);
+    /* ── ATTACK MODULES  y=446 ── */
+    int y_mod = y_ua + LH + G + IH + SG;
+    make_label(hwnd, f, L"Attack Modules:", px, y_mod, pw);
+    make_check(hwnd, f, L"XSS",      ID_CHECK_XSS,   px,        y_mod+LH+G, true);
+    make_check(hwnd, f, L"SQLi",     ID_CHECK_SQLI,  px+S(104), y_mod+LH+G, true);
+    make_check(hwnd, f, L"LFI",      ID_CHECK_LFI,   px+S(208), y_mod+LH+G, true);
+    make_check(hwnd, f, L"RCE",      ID_CHECK_RCE,   px,        y_mod+LH+G+S(26), true);
+    make_check(hwnd, f, L"SSRF",     ID_CHECK_SSRF,  px+S(104), y_mod+LH+G+S(26), true);
+    make_check(hwnd, f, L"Redirect", ID_CHECK_REDIR, px+S(208), y_mod+LH+G+S(26), false);
+    make_check(hwnd, f, L"CRLF",     ID_CHECK_CRLF,  px,        y_mod+LH+G+S(52), false);
 
-    /* ── Buttons ── always visible at bottom of config panel ── */
-    make_btn(hwnd, f, L"▶ Start", ID_BTN_SCAN, px,          py, S(140), S(36));
-    make_btn(hwnd, f, L"■ Stop",  ID_BTN_STOP, px+S(146),   py, S(76),  S(36));
-    py += S(42);
+    /* ── START / STOP  y=565 ── */
+    int y_btn = y_mod + LH + G + S(52+26) + SG;
+    make_btn(hwnd, f, L"▶ Start", ID_BTN_SCAN, px,          y_btn, S(140), S(36));
+    make_btn(hwnd, f, L"■ Stop",  ID_BTN_STOP, px+S(146),   y_btn, S(76),  S(36));
+    int py = y_btn + S(42);
     make_btn(hwnd, f, L"Export",  ID_BTN_EXPORT,  px,        py, S(92), S(28));
     make_btn(hwnd, f, L"History", ID_BTN_HISTORY, px+S(98),  py, S(92), S(28));
     make_btn(hwnd, f, L"Clear",   ID_BTN_CLEAR,   px+S(196), py, S(78), S(28));
 
-    /* subclass the coloured buttons */
+    /* subclass all custom-painted buttons */
     HWND hScan = GetDlgItem(hwnd, ID_BTN_SCAN);
     HWND hStop = GetDlgItem(hwnd, ID_BTN_STOP);
+    HWND hExp  = GetDlgItem(hwnd, ID_BTN_EXPORT);
+    HWND hHist = GetDlgItem(hwnd, ID_BTN_HISTORY);
+    HWND hClr  = GetDlgItem(hwnd, ID_BTN_CLEAR);
     g_orig_btn_proc = (WNDPROC)SetWindowLongPtrW(hScan, GWLP_WNDPROC,
                                                   (LONG_PTR)BtnSubclass);
     SetWindowLongPtrW(hStop, GWLP_WNDPROC, (LONG_PTR)BtnSubclass);
+    SetWindowLongPtrW(hExp,  GWLP_WNDPROC, (LONG_PTR)BtnSubclass);
+    SetWindowLongPtrW(hHist, GWLP_WNDPROC, (LONG_PTR)BtnSubclass);
+    SetWindowLongPtrW(hClr,  GWLP_WNDPROC, (LONG_PTR)BtnSubclass);
+
+    /* ── Left panel: green progress blocks (below Export row) ── */
+    {
+        int bpy = py + S(36); /* below Export/History/Clear row */
+        int bpx = px;
+        int bw  = (pw - S(19*2)) / 20; /* block width */
+        int bh  = S(14);
+        app->block_count = 20;
+        for (int bi = 0; bi < 20; bi++) {
+            HWND blk = CreateWindowW(L"STATIC", L"",
+                WS_CHILD|WS_VISIBLE|SS_NOTIFY,
+                bpx + bi*(bw+S(2)), bpy, bw, bh,
+                hwnd, (HMENU)(intptr_t)(ID_PROGRESS + 1 + bi), hi, NULL);
+            app->hwnd_blocks[bi] = blk;
+        }
+        /* Hidden standard progress for value tracking */
+        app->hwnd_progress = CreateWindowExW(0, PROGRESS_CLASS, NULL,
+            WS_CHILD, 0, 0, 1, 1, hwnd, (HMENU)ID_PROGRESS, hi, NULL);
+        SendMessage(app->hwnd_progress, PBM_SETRANGE, 0, MAKELPARAM(0,100));
+    }
 
     /* ── Right: Tab control ── */
     int tx = S(330), ty = S(66);
     int tw = S(860), th_tab = S(30);
 
-    /* Progress bar */
-    HWND prog = CreateWindowExW(0, PROGRESS_CLASS, NULL,
-        WS_CHILD|WS_VISIBLE|PBS_SMOOTH|PBS_SMOOTHREVERSE,
-        tx, ty, tw, S(8), hwnd, (HMENU)ID_PROGRESS, hi, NULL);
-    SendMessage(prog, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
-    SendMessage(prog, PBM_SETPOS, 0, 0);
-    app->hwnd_progress = prog;
-
-    ty += S(14);
+    ty += S(4); /* spacing below header */
 
     /* Stats label */
     HWND stats = CreateWindowW(L"STATIC", L"Готово до сканування",
         WS_CHILD|WS_VISIBLE|SS_LEFT,
         tx, ty, tw, S(20), hwnd, (HMENU)ID_LABEL_STATS, hi, NULL);
     SendMessage(stats, WM_SETFONT, (WPARAM)f, TRUE);
-    ty += S(24);
+    ty += S(26);
 
     /* Tab control */
     HWND tab = CreateWindowExW(0, WC_TABCONTROLW, NULL,
@@ -374,6 +421,20 @@ void gui_set_status(AppState *app, const wchar_t *text) {
         SendMessage(app->hwnd_status, SB_SETTEXTW, 0, (LPARAM)text);
 }
 
+/* ── Update green progress blocks ──────────────────────── */
+static void update_blocks(AppState *app, int pct) {
+    int filled = (pct * app->block_count) / 100;
+    for (int i = 0; i < app->block_count; i++) {
+        if (!app->hwnd_blocks[i]) continue;
+        /* Use WM_USER to carry fill state — repaint via subclass */
+        SetWindowLongPtrW(app->hwnd_blocks[i], GWLP_USERDATA,
+                          (i < filled) ? 1 : 0);
+        InvalidateRect(app->hwnd_blocks[i], NULL, TRUE);
+    }
+}
+
+
+
 void gui_set_scanning(AppState *app, bool scanning) {
     app->scanning = scanning;
     EnableWindow(GetDlgItem(app->hwnd_main, ID_BTN_SCAN), !scanning);
@@ -384,6 +445,7 @@ void gui_set_scanning(AppState *app, bool scanning) {
         gui_set_status(app, L"Scan complete");
     } else {
         SendMessage(app->hwnd_progress, PBM_SETPOS, 0, 0);
+    update_blocks(app, 0);
         gui_set_status(app, L"Scanning...");
     }
 }
@@ -456,9 +518,9 @@ static void paint_header(HWND hwnd) {
         DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY,DEFAULT_PITCH|FF_SWISS,L"Segoe UI");
     SelectObject(dc, sm);
-    SetTextColor(dc, RGB(180,200,255));
+    SetTextColor(dc, RGB(186,220,255));
     RECT sr = {16, 38, 600, 58};
-    DrawTextW(dc, L"Web Vulnerability Scanner v1.3.0", -1, &sr,
+    DrawTextW(dc, L"Web Vulnerability Scanner v1.3.1 • © 2026 root_bsd", -1, &sr,
               DT_LEFT|DT_VCENTER|DT_SINGLELINE);
     SelectObject(dc, old);
     DeleteObject(sm);
@@ -515,7 +577,7 @@ static void do_export(HWND hwnd) {
     OPENFILENAMEW ofn = {0};
     ofn.lStructSize  = sizeof(ofn);
     ofn.hwndOwner    = hwnd;
-    ofn.lpstrFilter  = L"HTML Report\0*.html\0JSON Report\0*.json\0CSV\0*.csv\0";
+    ofn.lpstrFilter  = L"HTML Report\0*.html\0CSV\0*.csv\0";
     ofn.lpstrFile    = path;
     ofn.nMaxFile     = MAX_PATH;
     ofn.lpstrDefExt  = L"html";
@@ -523,9 +585,8 @@ static void do_export(HWND hwnd) {
     if (!GetSaveFileNameW(&ofn)) return;
 
     int rc = -1;
-    if (ofn.nFilterIndex == 2)      rc = export_json(&g_app, path);
-    else if (ofn.nFilterIndex == 3) rc = export_csv(&g_app, path);
-    else                             rc = export_html(&g_app, path);
+    if (ofn.nFilterIndex == 2) rc = export_csv(&g_app, path);
+    else                        rc = export_html(&g_app, path);
 
     if (rc == 0) {
         wchar_t msg[MAX_PATH + 64];
@@ -536,6 +597,8 @@ static void do_export(HWND hwnd) {
         MessageBoxW(hwnd, L"Export failed.", L"Error", MB_OK|MB_ICONERROR);
     }
 }
+
+/* ── Forward declaration ──────────────────────────────── */
 
 /* ── Main Window Procedure ───────────────────────────────── */
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -550,12 +613,105 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_PAINT:
         paint_header(hwnd);
+        /* Paint left panel background + separator */
+        {
+            PAINTSTRUCT _ps;
+            HDC _dc = BeginPaint(hwnd, &_ps);
+            RECT _rc; GetClientRect(hwnd, &_rc);
+            /* Main area */
+            HBRUSH _main_br = CreateSolidBrush(BG_MAIN);
+            FillRect(_dc, &_rc, _main_br);
+            DeleteObject(_main_br);
+            /* Left panel */
+            RECT _panel = _rc;
+            _panel.right = _panel.left + MulDiv(330, GetDpiForWindow(hwnd), 96);
+            _panel.top   = 62;
+            HBRUSH _br = CreateSolidBrush(BG_PANEL);
+            FillRect(_dc, &_panel, _br);
+            DeleteObject(_br);
+            /* Separator line */
+            RECT _sep = _rc;
+            _sep.left  = MulDiv(330, GetDpiForWindow(hwnd), 96);
+            _sep.right = _sep.left + 1;
+            _sep.top   = 62;
+            HBRUSH _sep_br = CreateSolidBrush(COL_BORDER);
+            FillRect(_dc, &_sep, _sep_br);
+            DeleteObject(_sep_br);
+            EndPaint(hwnd, &_ps);
+        }
         return 0;
+
+    case WM_ERASEBKGND: {
+        /* Erase with dark panel background to prevent white flash */
+        HDC _dc = (HDC)wp;
+        RECT _rc;
+        GetClientRect(hwnd, &_rc);
+        HBRUSH _br = CreateSolidBrush(BG_MAIN);
+        FillRect(_dc, &_rc, _br);
+        /* Left panel */
+        RECT _panel = _rc;
+        _panel.right = MulDiv(330, GetDpiForWindow(hwnd), 96);
+        _panel.top   = 62;
+        HBRUSH _pbr = CreateSolidBrush(BG_PANEL);
+        FillRect(_dc, &_panel, _pbr);
+        DeleteObject(_br);
+        DeleteObject(_pbr);
+        return 1; /* indicate erased */
+    }
 
     case WM_CTLCOLORSTATIC: {
         HDC dc = (HDC)wp;
-        SetBkMode(dc, TRANSPARENT);
-        return (LRESULT)GetSysColorBrush(COLOR_BTNFACE);
+        HWND ctrl = (HWND)lp;
+        int cid = GetDlgCtrlID(ctrl);
+
+        /* Green progress blocks */
+        if (cid > ID_PROGRESS && cid <= ID_PROGRESS + 20) {
+            LONG_PTR filled = GetWindowLongPtrW(ctrl, GWLP_USERDATA);
+            COLORREF blk_c = filled
+                ? RGB( 21,128, 61)   /* filled — dark green */
+                : RGB(209,250,229);  /* empty  — light mint */
+            SetBkMode(dc, OPAQUE);
+            SetBkColor(dc, blk_c);
+            /* Cache per-state brushes */
+            static HBRUSH s_blk_on  = NULL;
+            static HBRUSH s_blk_off = NULL;
+            if (!s_blk_on)  s_blk_on  = CreateSolidBrush(RGB( 21,128, 61));
+            if (!s_blk_off) s_blk_off = CreateSolidBrush(RGB(209,250,229));
+            return (LRESULT)(filled ? s_blk_on : s_blk_off);
+        }
+
+        /* Stats label */
+        if (cid == ID_LABEL_STATS) {
+            SetBkMode(dc, OPAQUE);
+            SetTextColor(dc, COL_ACCENT);
+            SetBkColor(dc, BG_PANEL);
+        } else {
+            SetBkMode(dc, OPAQUE);
+            SetTextColor(dc, FG_LABEL);
+            SetBkColor(dc, BG_PANEL);
+        }
+        static HBRUSH s_panel_br = NULL;
+        if (!s_panel_br) s_panel_br = CreateSolidBrush(BG_PANEL);
+        return (LRESULT)s_panel_br;
+    }
+
+    case WM_CTLCOLOREDIT: {
+        HDC dc = (HDC)wp;
+        SetTextColor(dc, FG_MAIN);
+        SetBkColor(dc, BG_EDIT);
+        static HBRUSH s_edit_br = NULL;
+        if (!s_edit_br) { DeleteObject(s_edit_br); s_edit_br = NULL; }
+        if (!s_edit_br) s_edit_br = CreateSolidBrush(BG_EDIT);
+        return (LRESULT)s_edit_br;
+    }
+
+    case WM_CTLCOLORLISTBOX: {
+        HDC dc = (HDC)wp;
+        SetTextColor(dc, FG_MAIN);
+        SetBkColor(dc, BG_EDIT);
+        static HBRUSH s_list_br = NULL;
+        if (!s_list_br) s_list_br = CreateSolidBrush(BG_EDIT);
+        return (LRESULT)s_list_br;
     }
 
     case WM_COMMAND:
@@ -606,7 +762,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
         case IDM_HELP_ABOUT:
             MessageBoxW(hwnd,
-                L"ScanXSS v1.3.0\n"
+                L"ScanXSS v1.3.1\n"
                 L"Web Vulnerability Scanner\n\n"
                 L"Modules: XSS, SQLi, LFI, RCE, SSRF,\n"
                 L"Open Redirect, CRLF Injection\n\n"
@@ -652,6 +808,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_SCAN_PROGRESS: {
         int pct = (int)wp;
         SendMessage(app->hwnd_progress, PBM_SETPOS, pct, 0);
+        update_blocks(app, pct);
         return 0;
     }
 
@@ -752,7 +909,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE hpi, LPSTR cmd, int show) {
     /* Create window */
     HWND hwnd = CreateWindowExW(0, APP_CLASS, APP_TITLE,
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, 1220, 780,
+        CW_USEDEFAULT, CW_USEDEFAULT, 1220, 900,
         NULL, menu, hi, NULL);
     ShowWindow(hwnd, show);
     UpdateWindow(hwnd);

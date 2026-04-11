@@ -30,7 +30,14 @@ static void print_banner(void) {
 "   \\ \\____/\\ \\____/\\ \\_\\  \\ \\_\\   \\ \\____/\\ \\_\\ \\_\\\n"
 "    \\/___/  \\/___/  \\/_/   \\/_/    \\/___/  \\/_/\\/ /\n"
 COL_RESET
-COL_BOLD "  %s v%s — Web Vulnerability Scanner | GPL-2.0\n\n" COL_RESET,
+COL_BOLD
+"\n"
+"╔══════════════════════════════════════════════════╗\n"
+"║   %s v%s — Web Vulnerability Scanner   ║\n"
+"║   © 2026 root_bsd <root_bsd@itprof.net.ua>       ║\n"
+"║                     GPL-2.0                      ║\n"
+"╚══════════════════════════════════════════════════╝\n\n"
+COL_RESET,
 SCANXSS_NAME, SCANXSS_VERSION);
 }
 
@@ -53,7 +60,7 @@ static void print_usage(const char *prog) {
            "  -s SCOPE            url|page|folder|domain\n\n");
     printf("Вивід:\n"
            "  -o FILE             Файл звіту\n"
-           "  -f FORMAT           html|json|txt\n"
+           "  -f FORMAT           html|txt\n"
            "  -v                  Детальний вивід\n"
            "  --no-color          Без кольору\n\n");
     printf("База даних:\n"
@@ -70,7 +77,7 @@ static void print_usage(const char *prog) {
            "  --endpoint URL      SSRF callback\n\n");
     printf("Приклади:\n"
            "  %s -u http://site.com/ -f html -o rep.html\n"
-           "  %s -u http://site.com/ --rescan -f json -o new.json\n"
+           "  %s -u http://site.com/ --rescan -f html -o new.html\n"
            "  %s -u http://site.com/ --retarget\n"
            "  %s -u http://site.com/ --list-scans\n"
            "  %s -u http://site.com/ --wipe\n\n", prog,prog,prog,prog,prog);
@@ -304,9 +311,8 @@ int main(int argc, char *argv[]) {
     printf(COL_BOLD "\n[Reports]\n" COL_RESET);
     if (cfg->output_file[0]) {
         /* legacy: explicit -o FILE still works */
-        int rc = strcmp(cfg->output_format,"json")==0 ? report_json(ctx,cfg->output_file)
-               : strcmp(cfg->output_format,"txt") ==0 ? report_txt (ctx,cfg->output_file)
-               :                                        report_html(ctx,cfg->output_file);
+        int rc = strcmp(cfg->output_format,"txt")==0 ? report_txt(ctx,cfg->output_file)
+               :                                       report_html(ctx,cfg->output_file);
         if (rc==0) printf(COL_GREEN "  File: %s\n" COL_RESET, cfg->output_file);
         else       fprintf(stderr,"Report write failed: %s\n", cfg->output_file);
     } else {
@@ -339,7 +345,7 @@ int main(int argc, char *argv[]) {
             if (ctx->config.report_dir[0])
                 snprintf(rdir,sizeof(rdir),"%s",ctx->config.report_dir);
             else if (strstr(ctx->config.exe_dir,".app/Contents/MacOS"))
-                snprintf(rdir,sizeof(rdir),"%s/.scanxss/report/%s",home,host);
+                snprintf(rdir,sizeof(rdir),"%s/Desktop/report/%s",home,host);
             else {
                 const char *base=ctx->config.exe_dir[0]?ctx->config.exe_dir:".";
                 snprintf(rdir,sizeof(rdir),"%s/../report/%s",base,host);

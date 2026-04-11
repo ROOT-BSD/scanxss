@@ -239,7 +239,7 @@ static void get_scope_host(const char *url, char *out, size_t sz) {
 /* ══════════════════════════════════════════════════════════
  * LINK EXTRACTOR
  * ══════════════════════════════════════════════════════════ */
-#define MAX_LINKS_PER_PAGE 512
+#define MAX_LINKS_PER_PAGE 1024
 
 static int extract_links(const char *page_url, const char *html,
                            char out[][MAX_URL], int max_out,
@@ -247,8 +247,9 @@ static int extract_links(const char *page_url, const char *html,
     if (!html || !*html) return 0;
     int n = 0;
 
-    /* We look for href=, src=, action= attributes */
-    const char *attrs[] = {"href=", "src=", "action=", NULL};
+    /* Look for href=, src=, action= and JS location patterns */
+    const char *attrs[] = {"href=", "src=", "action=",
+                           "data-href=", "data-url=", "data-link=", NULL};
 
     for (int ai = 0; attrs[ai] && n < max_out; ai++) {
         const char *p = html;
@@ -340,15 +341,19 @@ static int extract_links(const char *page_url, const char *html,
             }
             if (!in_scope) continue;
 
-            /* Skip static assets */
+            /* Skip truly static assets (images, fonts, archives) */
             const char *ext = strrchr(resolved, '.');
             if (ext && (
-                _stricmp(ext,".css")==0 || _stricmp(ext,".js")==0  ||
                 _stricmp(ext,".png")==0 || _stricmp(ext,".jpg")==0 ||
-                _stricmp(ext,".gif")==0 || _stricmp(ext,".svg")==0 ||
-                _stricmp(ext,".ico")==0 || _stricmp(ext,".woff")==0||
-                _stricmp(ext,".woff2")==0|| _stricmp(ext,".ttf")==0||
-                _stricmp(ext,".pdf")==0 || _stricmp(ext,".zip")==0)) continue;
+                _stricmp(ext,".jpeg")==0|| _stricmp(ext,".gif")==0 ||
+                _stricmp(ext,".svg")==0 || _stricmp(ext,".ico")==0 ||
+                _stricmp(ext,".woff")==0|| _stricmp(ext,".woff2")==0||
+                _stricmp(ext,".ttf")==0 || _stricmp(ext,".eot")==0 ||
+                _stricmp(ext,".pdf")==0 || _stricmp(ext,".zip")==0 ||
+                _stricmp(ext,".gz")==0  || _stricmp(ext,".mp4")==0 ||
+                _stricmp(ext,".mp3")==0 || _stricmp(ext,".avi")==0)) continue;
+            /* Note: .js and .css are kept — they may contain links */
+            /* Note: .php is kept — may be dynamic pages */
 
             /* Dedup */
             bool dup = false;
@@ -502,8 +507,9 @@ static bool probe_reflect(ScanParams *p, const char *url, const char *param) {
     char turl[MAX_URL*2]={0};
     build_url(turl, sizeof(turl), url, param, probe);
     WinResp *r = whttp_get(p, turl);
-    bool ok = r && r->body && r->status>=200 && r->status<400
-              && strstr(r->body, probe);
+    bool ok = false;
+    if (r && r->body && r->status>=200 && r->status<400
+        && strstr(r->body, probe)) ok = true;
     wfree(r); free(probe);
     return ok;
 }
@@ -515,15 +521,27 @@ static bool test_xss(ScanParams *p, const char *url,
     char turl[MAX_URL*2]={0};
     build_url(turl, sizeof(turl), url, param, payload);
     WinResp *r = whttp_get(p, turl);
+    /* Also try with encoded variants */
+    if (!r || r->len == 0) {
+        wfree(r);
+        /* Try URL-encoded payload */
+        char enc_payload[512]={0};
+        url_enc(enc_payload, sizeof(enc_payload), payload);
+        char turl2[MAX_URL*2]={0};
+        build_url(turl2, sizeof(turl2), url, param, enc_payload);
+        r = whttp_get(p, turl2);
+    }
     bool found = false;
-    if (r && r->body && r->status>=200 && r->status<400) {
+    if (!r) {
+        /* HTTP failed */
+    } else if (r->body && r->status>=200 && r->status<400) {
         for (int m=0; m<_px_xss_markers_count && !found; m++) {
             char *mark = px_xss_marker(m);
             if (mark) { if (icontains(r->body, mark)) found=true; free(mark); }
         }
     }
     if (found) {
-        tlogf(p, RGB(255,60,60), "  [XSS] %s param=%s", url, param);
+        tlogf(p, RGB(185,28,28), "  [XSS] %s param=%s", url, param);
         report_vuln(p,4,"xss","Cross-Site Scripting (XSS)",
                     url, param, payload, "Payload reflected unescaped");
     }
@@ -540,15 +558,24 @@ static bool test_sqli(ScanParams *p, const char *url,
     WinResp *r = whttp_get(p, turl);
     bool found = false;
     if (r && r->body && r->status>=200 && r->status<400) {
+        /* Error-based: look for DB error strings */
         for (int e=0; e<_px_sqli_errors_count && !found; e++) {
             char *err = px_sqli_error(e);
             if (err) { if (icontains(r->body, err)) found=true; free(err); }
         }
+        /* Time-based indicators in response body */
+        if (!found && (icontains(r->body, "sleep") ||
+                       icontains(r->body, "benchmark") ||
+                       icontains(r->body, "waitfor")))
+            found = true;
+        /* Status changed to 500 — server error from bad SQL */
+        if (!found && r->status == 500) found = true;
     }
     if (found) {
-        tlogf(p, RGB(255,60,60), "  [SQLi] %s param=%s", url, param);
+        tlogf(p, RGB(185,28,28), "  [SQLi] %s param=%s payload=%s",
+              url, param, payload);
         report_vuln(p,5,"sqli","SQL Injection",
-                    url, param, payload, "Database error in response");
+                    url, param, payload, "Database error or status 500");
     }
     free(payload); wfree(r);
     return found;
@@ -606,10 +633,17 @@ static bool test_rce(ScanParams *p, const char *url,
 
 static bool test_ssrf(ScanParams *p, const char *url,
                        const char *param) {
-    /* SSRF: probe internal addresses */
+    /* Get baseline response to detect false positives */
+    char base_url[MAX_URL*2] = {0};
+    build_url(base_url, sizeof(base_url), url, param, "1");
+    WinResp *baseline = whttp_get(p, base_url);
+    size_t base_len   = baseline ? baseline->len    : 0;
+    long   base_stat  = baseline ? baseline->status : 0;
+    wfree(baseline);
+
     const char *targets[] = {
         "http://127.0.0.1/",
-        "http://169.254.169.254/",  /* AWS metadata */
+        "http://169.254.169.254/",
         "http://192.168.1.1/",
         NULL
     };
@@ -617,12 +651,39 @@ static bool test_ssrf(ScanParams *p, const char *url,
         char turl[MAX_URL*2] = {0};
         build_url(turl, sizeof(turl), url, param, targets[ti]);
         WinResp *r = whttp_get(p, turl);
-        if (r && r->status >= 200 && r->status < 500 && r->body && r->len > 0) {
-            /* Any non-error response to internal addr suggests SSRF */
-            tlogf(p, RGB(255,160,0), "  [SSRF] %s param=%s → %s",
+        if (!r) continue;
+
+        bool found = false;
+
+        /* Heuristic 1: response length changed >30% from baseline */
+        if (r->body && r->len > 0 && base_len > 0) {
+            size_t diff = (r->len > base_len) ? r->len-base_len : base_len-r->len;
+            if ((double)diff/(double)base_len > 0.30 &&
+                r->status >= 200 && r->status < 400)
+                found = true;
+        }
+
+        /* Heuristic 2: body contains internal-host indicators */
+        if (!found && r->body && r->len > 0) {
+            if (icontains(r->body, "connection refused") ||
+                icontains(r->body, "connection reset")  ||
+                icontains(r->body, "no route to host")  ||
+                (ti==1 && icontains(r->body, "ami-id")) ||
+                (ti==1 && icontains(r->body, "instance-id")))
+                found = true;
+        }
+
+        /* Heuristic 3: status switched from error to success */
+        if (!found && r->status != base_stat &&
+            r->status >= 200 && r->status < 400 && base_stat >= 400)
+            found = true;
+
+        if (found) {
+            tlogf(p, RGB(180,83,9), "  [SSRF] %s param=%s -> %s",
                   url, param, targets[ti]);
             report_vuln(p,4,"ssrf","Server-Side Request Forgery",
-                        url, param, targets[ti], "Internal address responded");
+                        url, param, targets[ti],
+                        "Response differs significantly from baseline");
             wfree(r); return true;
         }
         wfree(r);
@@ -644,7 +705,7 @@ DWORD WINAPI scan_thread(LPVOID arg) {
     char scope_host[256] = {0};
     get_scope_host(p->url, scope_host, sizeof(scope_host));
 
-    tlogf(p, RGB(100,220,100),
+    tlogf(p, RGB( 21,128, 61),
           "Starting: %s  depth:%d  rate:%d/s  scope:%s",
           p->url, p->depth, p->rate, p->scope);
 
@@ -669,7 +730,7 @@ DWORD WINAPI scan_thread(LPVOID arg) {
     int page_count = 0, form_count = 0;
     int rate_ms = (p->rate > 0) ? (1000 / p->rate) : 50;
 
-    tlog(p, "[Crawl] Discovering pages...", RGB(100,200,255));
+    tlog(p, "[Crawl] Discovering pages...", RGB( 29, 78,216));
 
     while (head != tail && page_count < MAX_PAGES && !p->stop_requested) {
         char  cur[MAX_URL];
@@ -691,7 +752,7 @@ DWORD WINAPI scan_thread(LPVOID arg) {
             if (resp->status == 403) strncpy(hint," (403 Forbidden - bot protection)",79);
             else if (resp->status == 429) strncpy(hint," (429 Rate Limited - slow down)",79);
             else if (resp->status == 401) strncpy(hint," (401 - set cookies)",79);
-            tlogf(p, RGB(200,100,100), "  HTTP %ld%s: %s",
+            tlogf(p, RGB(220, 38, 38), "  HTTP %ld%s: %s",
                   resp->status, hint, cur);
             wfree(resp);
             continue;
@@ -700,16 +761,45 @@ DWORD WINAPI scan_thread(LPVOID arg) {
         bool is_html = resp->body && (
             resp->content_type[0] == '\0' ||
             icontains(resp->content_type, "html") ||
-            icontains(resp->content_type, "xhtml"));
+            icontains(resp->content_type, "xhtml") ||
+            icontains(resp->content_type, "text/plain"));
 
+        /* Even non-HTML pages: try to extract links */
         if (!is_html || !resp->body || resp->len == 0) {
+            /* For non-HTML responses, still try link extraction */
+            if (resp->body && resp->len > 0 && cur_depth < p->depth) {
+                char (*links2)[MAX_URL] = calloc(MAX_LINKS_PER_PAGE, MAX_URL);
+                if (links2) {
+                    int nl2 = extract_links(cur, resp->body, links2,
+                                           MAX_LINKS_PER_PAGE, scope_host);
+                    for (int i=0; i<nl2; i++) {
+                        bool seen = false;
+                        int qi = head;
+                        while (qi != tail) {
+                            if (strcmp(queue[qi], links2[i])==0){seen=true;break;}
+                            qi=(qi+1)%MAX_Q;
+                        }
+                        if (!seen) for (int pj=0;pj<page_count;pj++)
+                            if(strcmp(pages[pj],links2[i])==0){seen=true;break;}
+                        if (!seen) {
+                            int nt=(tail+1)%MAX_Q;
+                            if(nt!=head){
+                                snprintf(queue[tail],MAX_URL,"%s",links2[i]);
+                                queue_depth[tail]=cur_depth+1;
+                                tail=nt;
+                            }
+                        }
+                    }
+                    free(links2);
+                }
+            }
             wfree(resp);
             continue;
         }
 
         /* Record page */
         snprintf(pages[page_count++], MAX_URL, "%s", cur);
-        tlogf(p, RGB(140,220,140), "  ✓ [%d] %s  (%zu bytes)",
+        tlogf(p, RGB( 22,101, 52), "  ✓ [%d] %s  (%zu bytes)",
               page_count, cur, resp->len);
 
         /* Extract forms */
@@ -718,7 +808,7 @@ DWORD WINAPI scan_thread(LPVOID arg) {
                                      forms + form_count,
                                      MAX_FORMS_W - form_count);
         if (form_count > old_fc)
-            tlogf(p, RGB(140,160,240), "    +%d form(s)", form_count - old_fc);
+            tlogf(p, RGB( 59,130,246), "    +%d form(s)", form_count - old_fc);
 
         /* Extract links if depth allows */
         if (cur_depth < p->depth) {
@@ -751,21 +841,21 @@ DWORD WINAPI scan_thread(LPVOID arg) {
                     }
                 }
                 if (nl > 0)
-                    tlogf(p, RGB(120,140,200),
-                          "    %d links found, %d queued (depth %d→%d)",
-                          nl, enq, cur_depth, cur_depth+1);
+                    tlogf(p, RGB( 55, 48,163),
+                          "    %d links, %d queued, %d filtered (depth %d→%d)",
+                          nl, enq, nl-enq, cur_depth, cur_depth+1);
                 free(links);
             }
         }
         wfree(resp);
     }
 
-    tlogf(p, RGB(100,220,100),
+    tlogf(p, RGB( 21,128, 61),
           "[Crawl] Done. Pages: %d  Forms: %d", page_count, form_count);
 
     if (page_count == 0) {
-        tlog(p, "  ⚠ Zero pages crawled.", RGB(255,160,0));
-        tlog(p, "  Try: adjust User-Agent, add Cookies, check URL.", RGB(255,200,100));
+        tlog(p, "  ⚠ Zero pages crawled.", RGB(180, 83,  9));
+        tlog(p, "  Try: adjust User-Agent, add Cookies, check URL.", RGB(146, 64, 14));
     }
 
     /* ── Add URL query params as attack surfaces ── */
@@ -789,41 +879,41 @@ DWORD WINAPI scan_thread(LPVOID arg) {
             tok = strtok(NULL, "&");
         }
         if (f->param_count > 0) {
-            tlogf(p, RGB(120,140,200), "  [URL params] %s (%d params)",
+            tlogf(p, RGB( 55, 48,163), "  [URL params] %s (%d params)",
                   f->url, f->param_count);
             form_count++;
         }
     }
 
-    /* ── Common params probe on pages with no forms ── */
+    /* ── Always add GET form with common params for every page ── */
     const char *cparams[] = {
         "id","q","s","search","query","page","cat","file",
-        "path","url","redirect","lang","type","view","name", NULL
+        "path","url","redirect","lang","type","view","name",
+        "user","pass","username","password","token","key",
+        "action","cmd","exec","order","sort","dir", NULL
     };
     for (int pi = 0; pi < page_count && form_count < MAX_FORMS_W; pi++) {
-        /* strip query from URL for dedup */
         char base_no_qs[MAX_URL]={0};
         const char *qs2 = strchr(pages[pi],'?');
-        if (qs2) { size_t bl=(size_t)(qs2-pages[pi]); if(bl<MAX_URL){memcpy(base_no_qs,pages[pi],bl);base_no_qs[bl]='\0';} }
+        if (qs2) { size_t bl=(size_t)(qs2-pages[pi]);
+            if(bl<MAX_URL){memcpy(base_no_qs,pages[pi],bl);base_no_qs[bl]='\0';} }
         else snprintf(base_no_qs, MAX_URL, "%s", pages[pi]);
 
-        /* check if we already have a form for this base URL */
-        bool has = false;
-        for (int fi=0; fi<form_count; fi++)
-            if (strcmp(forms[fi].url, base_no_qs)==0) { has=true; break; }
-        if (has) continue;
-
-        SimpleForm *f = &forms[form_count];
-        f->method = 0;
-        snprintf(f->url, MAX_URL, "%s", base_no_qs);
-        for (int ci=0; cparams[ci] && f->param_count<8; ci++)
-            snprintf(f->params[f->param_count++], 64, "%s", cparams[ci]);
-        form_count++;
-        tlogf(p, RGB(100,120,180), "  [Common] %s (%d params)",
-              base_no_qs, f->param_count);
+        /* Always add common params as a separate GET attack surface */
+        if (form_count < MAX_FORMS_W) {
+            SimpleForm *f = &forms[form_count];
+            memset(f, 0, sizeof(*f));
+            f->method = 0; /* GET */
+            snprintf(f->url, MAX_URL, "%s", base_no_qs);
+            for (int ci=0; cparams[ci] && f->param_count<16; ci++)
+                snprintf(f->params[f->param_count++], 64, "%s", cparams[ci]);
+            form_count++;
+            tlogf(p, RGB( 37, 99,235), "  [Common GET] %s (%d params)",
+                  base_no_qs, f->param_count);
+        }
     }
 
-    tlogf(p, RGB(100,200,255),
+    tlogf(p, RGB( 29, 78,216),
           "[Attack] %d forms, %d total attack surfaces",
           form_count, form_count);
 
@@ -838,7 +928,7 @@ DWORD WINAPI scan_thread(LPVOID arg) {
 
     for (int fi = 0; fi < form_count && !p->stop_requested; fi++) {
         SimpleForm *f = &forms[fi];
-        tlogf(p, RGB(130,130,200), "  Testing: %s [%s] (%d params)",
+        tlogf(p, RGB( 67, 56,202), "  Testing: %s [%s] (%d params)",
               f->url, f->method?"POST":"GET", f->param_count);
 
         for (int pi2 = 0; pi2 < f->param_count && !p->stop_requested; pi2++) {
@@ -846,14 +936,20 @@ DWORD WINAPI scan_thread(LPVOID arg) {
             const char *pm = f->params[pi2];
 
             if (p->modules & 0x01) { /* XSS */
-                if (probe_reflect(p, f->url, pm))
-                    for (int xi=0; xi<_px_xss_count && !p->stop_requested; xi++)
-                        if (test_xss(p, f->url, pm, xi)) break;
+                bool reflected = probe_reflect(p, f->url, pm);
+                for (int xi=0; xi<_px_xss_count && !p->stop_requested; xi++) {
+                    Sleep(rate_ms);
+                    /* POST forms: test all payloads regardless of probe */
+                    if (!reflected && f->method == 0 && xi < 2) continue;
+                    if (test_xss(p, f->url, pm, xi)) break;
+                }
                 UPD_PROG();
             }
             if (p->modules & 0x02) { /* SQLi */
-                for (int si=0; si<_px_sqli_count && !p->stop_requested; si++)
+                for (int si=0; si<_px_sqli_count && !p->stop_requested; si++) {
+                    Sleep(rate_ms);
                     if (test_sqli(p, f->url, pm, si)) break;
+                }
                 UPD_PROG();
             }
             if (p->modules & 0x04) { /* LFI */
@@ -875,7 +971,7 @@ DWORD WINAPI scan_thread(LPVOID arg) {
 
 done:
     set_progress(p, 100);
-    tlog(p, "[Done]", RGB(100,220,100));
+    tlog(p, "[Done]", RGB( 21,128, 61));
 
     free(queue); free(in_queue); free(pages);
     free(forms); free(queue_depth);

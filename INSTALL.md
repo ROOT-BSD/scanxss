@@ -10,27 +10,14 @@ make && make test
 
 ## macOS (GUI + CLI)
 ```bash
-cd macos
-sudo bash INSTALL.sh
+cd macos && sudo bash INSTALL.sh
 ```
 
 ## Windows
-```
-windows/installer/scanxss-setup.exe
-```
-Run as Administrator. The installer will:
-1. Install the root CA certificate (RootBSD-CA.cer) to Trusted Root store
-2. Install ScanXSS to C:\Program Files\ScanXSS\
+Run `windows/installer/scanxss-setup.exe` as Administrator.
 
-If Windows Defender blocks the installer before it runs:
+If Defender blocks installer:
 ```powershell
-# Run PowerShell as Administrator:
 certutil -addstore -f "Root" "windows\installer\RootBSD-CA.cer"
-# Then run the installer
 ```
-
-## Code Signing
-Both `scanxss-gui.exe` and `scanxss-setup.exe` are signed with:
-- Certificate: ScanXSS Web Vulnerability Scanner
-- Issuer: root_bsd CA
-- Valid: 2026–2036
+Then run the installer.

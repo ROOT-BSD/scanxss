@@ -104,10 +104,10 @@ static int ensure_report_dir(const ScanContext *ctx, char *dir_out, size_t sz) {
         snprintf(dir_out, sz, "%s", ctx->config.report_dir);
     } else {
 #ifdef __APPLE__
-        /* macOS: always use ~/.scanxss/report/<host>/ */
+        /* macOS: save to ~/Desktop/report/<host>/ */
         const char *home = getenv("HOME");
         if (!home) home = "/tmp";
-        snprintf(dir_out, sz, "%s/.scanxss/report/%s", home, hostname);
+        snprintf(dir_out, sz, "%s/Desktop/report/%s", home, hostname);
 #else
         const char *base = ctx->config.exe_dir[0] ? ctx->config.exe_dir : ".";
         snprintf(dir_out, sz, "%s/../report/%s", base, hostname);
@@ -569,18 +569,15 @@ int report_generate(ScanContext *ctx) {
     char dir[640]={0};
     if (ensure_report_dir(ctx, dir, sizeof(dir)) < 0) return -1;
 
-    char path_html[700], path_json[700], path_txt[700];
+    char path_html[700], path_txt[700];
     make_report_path(ctx, dir, "html", path_html, sizeof(path_html));
-    make_report_path(ctx, dir, "json", path_json, sizeof(path_json));
     make_report_path(ctx, dir, "txt",  path_txt,  sizeof(path_txt));
 
     int ok=0;
     if (report_html(ctx,path_html)==0) {
         printf(COL_GREEN "  HTML: %s\n" COL_RESET, path_html); ok++;
     } else fprintf(stderr,"  HTML: FAILED %s\n",path_html);
-    if (report_json(ctx,path_json)==0) {
-        printf(COL_GREEN "  JSON: %s\n" COL_RESET, path_json); ok++;
-    } else fprintf(stderr,"  JSON: FAILED %s\n",path_json);
+    /* JSON report removed */
     if (report_txt(ctx,path_txt)==0) {
         printf(COL_GREEN "  TXT:  %s\n" COL_RESET, path_txt); ok++;
     } else fprintf(stderr,"  TXT:  FAILED %s\n",path_txt);
