@@ -572,30 +572,76 @@ static ScanParams *collect_params(HWND hwnd) {
 }
 
 /* ── Export dialog ───────────────────────────────────────── */
-static void do_export(HWND hwnd) {
-    wchar_t path[MAX_PATH] = {0};
-    OPENFILENAMEW ofn = {0};
-    ofn.lStructSize  = sizeof(ofn);
-    ofn.hwndOwner    = hwnd;
-    ofn.lpstrFilter  = L"HTML Report\0*.html\0CSV\0*.csv\0";
-    ofn.lpstrFile    = path;
-    ofn.nMaxFile     = MAX_PATH;
-    ofn.lpstrDefExt  = L"html";
-    ofn.Flags        = OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST;
-    if (!GetSaveFileNameW(&ofn)) return;
+/* Extract hostname from URL for report folder name */
+static void url_to_host(const char *url, wchar_t *out, int outsz) {
+    const char *s = url;
+    if (strncmp(s,"http://",7)==0) s+=7;
+    else if (strncmp(s,"https://",8)==0) s+=8;
+    int i=0;
+    while (*s && *s!='/' && *s!='?' && i<outsz-1)
+        out[i++] = (wchar_t)(unsigned char)*s++;
+    out[i]=0;
+    if (!out[0]) wcscpy(out, L"report");
+}
 
-    int rc = -1;
-    if (ofn.nFilterIndex == 2) rc = export_csv(&g_app, path);
-    else                        rc = export_html(&g_app, path);
+/* Auto-save report to %USERPROFILE%\Desktop\REPORT\<host>\ */
+static void auto_save_report(HWND hwnd, AppState *app) {
+    const char *src_url = app->scan_target[0] ? app->scan_target
+        : (app->scan_params && app->scan_params->url[0]
+           ? app->scan_params->url : NULL);
+    if (!src_url) return;
+
+    /* Build Desktop\\REPORT\\<host> path */
+    wchar_t desktop[MAX_PATH]={0};
+    if (FAILED(SHGetFolderPathW(NULL, CSIDL_DESKTOP, NULL, 0, desktop)))
+        GetEnvironmentVariableW(L"USERPROFILE", desktop, MAX_PATH);
+
+    wchar_t host[256]={0};
+    url_to_host(src_url, host, 256);
+
+    wchar_t dir[MAX_PATH]={0};
+    _snwprintf(dir, MAX_PATH-1, L"%s\\REPORT\\%s", desktop, host);
+
+    /* Create directories */
+    wchar_t tmp[MAX_PATH]={0};
+    wcscpy(tmp, dir);
+    for (wchar_t *p = tmp+1; *p; p++) {
+        if (*p==L'\\') { *p=0; CreateDirectoryW(tmp,NULL); *p=L'\\'; }
+    }
+    CreateDirectoryW(tmp, NULL);
+
+    /* Timestamp */
+    SYSTEMTIME st; GetLocalTime(&st);
+    wchar_t ts[32];
+    _snwprintf(ts,31,L"%04d%02d%02d_%02d%02d%02d",
+               st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond);
+
+    /* HTML report */
+    wchar_t html_path[MAX_PATH]={0};
+    _snwprintf(html_path, MAX_PATH-1, L"%s\\%s_%s.html", dir, host, ts);
+    int rc = export_html(app, html_path);
+
+    /* TXT report */
+    wchar_t txt_path[MAX_PATH]={0};
+    _snwprintf(txt_path, MAX_PATH-1, L"%s\\%s_%s.txt", dir, host, ts);
+    export_txt(app, txt_path);
 
     if (rc == 0) {
-        wchar_t msg[MAX_PATH + 64];
-        _snwprintf(msg, MAX_PATH+63, L"Report saved:\n%s", path);
-        MessageBoxW(hwnd, msg, L"Export OK", MB_OK|MB_ICONINFORMATION);
-        ShellExecuteW(hwnd, L"open", path, NULL, NULL, SW_SHOWNORMAL);
+        wchar_t msg[MAX_PATH*2];
+        _snwprintf(msg, MAX_PATH*2-1,
+                   L"Reports saved to:\n%s\n\nOpen HTML report?", dir);
+        if (MessageBoxW(hwnd, msg, L"Report saved", MB_YESNO|MB_ICONINFORMATION)==IDYES)
+            ShellExecuteW(hwnd, L"open", html_path, NULL, NULL, SW_SHOWNORMAL);
     } else {
-        MessageBoxW(hwnd, L"Export failed.", L"Error", MB_OK|MB_ICONERROR);
+        wchar_t msg[MAX_PATH+64];
+        _snwprintf(msg, MAX_PATH+63, L"Report save failed!\nPath: %s", dir);
+        MessageBoxW(hwnd, msg, L"Error", MB_OK|MB_ICONERROR);
     }
+}
+
+/* Manual export via Save dialog */
+static void do_export(HWND hwnd) {
+    auto_save_report(hwnd, &g_app);
 }
 
 /* ── Forward declaration ──────────────────────────────── */
@@ -726,6 +772,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 gui_clear(app);
                 app->scan_params = collect_params(hwnd);
                 app->scan_params->stop_requested = false;
+                /* Save URL for report after scan_params freed */
+                strncpy(app->scan_target, app->scan_params->url,
+                        sizeof(app->scan_target)-1);
                 app->scan_thread = CreateThread(NULL, 0, scan_thread,
                                                 app->scan_params, 0, NULL);
                 gui_set_scanning(app, true);
@@ -823,9 +872,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 L"Scan complete. Found: %d vulnerability(ies).",
                 app->vuln_count);
             gui_log(app, msg,
-                    app->vuln_count > 0 ? COL_CRITICAL : RGB(100,200,100));
+                    app->vuln_count > 0 ? COL_CRITICAL : RGB(22,163,74));
             gui_set_status(app, msg);
         }
+        /* Auto-save report to Desktop\REPORT\ */
+        auto_save_report(hwnd, app);
         free(app->scan_params);
         app->scan_params = NULL;
         return 0;

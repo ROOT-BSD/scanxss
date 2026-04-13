@@ -31,8 +31,11 @@ static void html_esc_f(FILE *f, const char *s) {
 }
 
 int export_html(AppState *app, const wchar_t *path) {
-    FILE *f=_wfopen(path,L"w,ccs=UTF-8");
+    /* Convert wchar path to UTF-8 for fopen */
+    FILE *f=_wfopen(path,L"wb");
     if(!f) return -1;
+    /* UTF-8 BOM */
+    fwrite("\xEF\xBB\xBF",1,3,f);
     fprintf(f,"<!DOCTYPE html><html lang='uk'><head><meta charset='UTF-8'>"
               "<meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; style-src 'unsafe-inline'\">"
               "<title>ScanXSS Report</title><style>"
@@ -107,4 +110,38 @@ int export_csv(AppState *app, const wchar_t *path) {
                 i+1,v->type,v->severity,v->url,v->parameter,v->payload,v->evidence);
     }
     fclose(f); return 0;
+}
+
+int export_txt(AppState *app, const wchar_t *path) {
+    FILE *f=_wfopen(path,L"wb");
+    if(!f) return -1;
+    fwrite("\xEF\xBB\xBF",1,3,f);
+
+    time_t now = time(NULL);
+    char ts[64]; strftime(ts, 63, "%Y-%m-%d %H:%M:%S", localtime(&now));
+    const char *url = app->scan_target[0] ? app->scan_target
+                   : (app->scan_params && app->scan_params->url[0]
+                      ? app->scan_params->url : "N/A");
+
+    fprintf(f, "ScanXSS v1.3.1 — Scan Report\n");
+    fprintf(f, "==============================\n");
+    fprintf(f, "Target:      %s\n", url);
+    fprintf(f, "Generated:   %s\n", ts);
+    fprintf(f, "Vulns found: %d\n\n", app->vuln_count);
+
+    if (app->vuln_count == 0) {
+        fprintf(f, "No vulnerabilities found.\n");
+    } else {
+        for (int i = 0; i < app->vuln_count; i++) {
+            const VulnRecord *v = &app->vulns[i];
+            fprintf(f, "[%d] %s  Severity:%d\n", i+1, v->type, v->severity);
+            fprintf(f, "    URL:   %s\n", v->url);
+            fprintf(f, "    Param: %s\n", v->parameter);
+            fprintf(f, "    Payload: %s\n", v->payload);
+            fprintf(f, "    Evidence: %s\n\n", v->evidence);
+        }
+    }
+    fprintf(f, "\n© 2026 root_bsd | GPL-2.0\n");
+    fclose(f);
+    return 0;
 }

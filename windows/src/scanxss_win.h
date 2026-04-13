@@ -175,6 +175,7 @@ void db_show_history(HWND parent, AppState *app);
 
 /* export.c */
 int  export_html(AppState *app, const wchar_t *path);
+int  export_txt (AppState *app, const wchar_t *path);
 int  export_csv(AppState *app, const wchar_t *path);
 
 #endif /* SCANXSS_WIN_H */
