@@ -328,10 +328,23 @@ int crawler_run(ScanContext *ctx) {
 
         if (!is_html || !resp->body || resp->body_len == 0) {
             skipped_nonhtml++;
-            if (cfg->verbose && !is_html)
-                log_info(1, cfg->color,
-                         "  Non-HTML (%s) — skipping links",
-                         resp->content_type);
+            /* Still try to extract links from non-HTML responses
+             * (JS bundles, API responses, redirects may contain URLs) */
+            if (resp->body && resp->body_len > 0 && cur.depth < cfg->depth) {
+                CrawlResult tmp2 = {0};
+                const char *lb2 = resp->final_url[0] ? resp->final_url : cur.url;
+                crawler_extract_links(lb2, resp->body, &tmp2);
+                for (int i = 0; i < tmp2.url_count; i++) {
+                    const char *u = tmp2.urls[i];
+                    if (!url_in_scope(cfg->target_url, u, scope)) continue;
+                    if (visited_check(u)) continue;
+                    if (tail < qcap) {
+                        strncpy(queue[tail].url, u, MAX_URL_LEN-1);
+                        queue[tail].depth = cur.depth + 1;
+                        tail++;
+                    }
+                }
+            }
             http_response_free(resp);
             continue;
         }

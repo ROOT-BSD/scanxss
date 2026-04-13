@@ -39,9 +39,11 @@ static int exec(ScanContext *ctx, const char *sql) {
 static const char *SCHEMA =
     "PRAGMA journal_mode=WAL;"
     "CREATE TABLE IF NOT EXISTS urls("
-    "  id    INTEGER PRIMARY KEY,"
-    "  url   TEXT UNIQUE NOT NULL,"
-    "  ts    INTEGER DEFAULT (strftime('%s','now'))"
+    "  id      INTEGER PRIMARY KEY,"
+    "  scan_id INTEGER NOT NULL DEFAULT 0,"
+    "  url     TEXT NOT NULL,"
+    "  ts      INTEGER DEFAULT (strftime('%s','now')),"
+    "  UNIQUE(scan_id, url)"
     ");"
     "CREATE TABLE IF NOT EXISTS forms("
     "  id     INTEGER PRIMARY KEY,"
@@ -98,7 +100,10 @@ int session_open(ScanContext *ctx) {
     ctx->db = handle;
 
     if (ctx->config.flush_session) {
-        session_flush(ctx);
+        /* flush: drop tables — implemented below */
+        exec(ctx, "DROP TABLE IF EXISTS urls;"
+                  "DROP TABLE IF EXISTS forms;"
+                  "DROP TABLE IF EXISTS vulns;");
     }
 
     if (exec(ctx, SCHEMA) != SQLITE_OK) {
@@ -127,8 +132,9 @@ int session_save_url(ScanContext *ctx, const char *url) {
     if (!ctx->db) return 0;
     sqlite3_stmt *s;
     sqlite3_prepare_v2(db(ctx),
-        "INSERT OR IGNORE INTO urls(url) VALUES(?)", -1, &s, NULL);
-    sqlite3_bind_text(s, 1, url, -1, SQLITE_STATIC);
+        "INSERT OR IGNORE INTO urls(scan_id,url) VALUES(?,?)", -1, &s, NULL);
+    sqlite3_bind_int (s, 1, ctx->scan_id);
+    sqlite3_bind_text(s, 2, url, -1, SQLITE_STATIC);
     sqlite3_step(s);
     sqlite3_finalize(s);
     return 0;
@@ -137,9 +143,11 @@ int session_save_url(ScanContext *ctx, const char *url) {
 int session_url_visited(ScanContext *ctx, const char *url) {
     if (!ctx->db) return 0;
     sqlite3_stmt *s;
+    /* Only check URLs from the CURRENT scan to avoid false "visited" */
     sqlite3_prepare_v2(db(ctx),
-        "SELECT 1 FROM urls WHERE url=? LIMIT 1", -1, &s, NULL);
+        "SELECT 1 FROM urls WHERE url=? AND scan_id=? LIMIT 1", -1, &s, NULL);
     sqlite3_bind_text(s, 1, url, -1, SQLITE_STATIC);
+    sqlite3_bind_int(s,  2, ctx->scan_id);
     int found = (sqlite3_step(s) == SQLITE_ROW);
     sqlite3_finalize(s);
     return found;

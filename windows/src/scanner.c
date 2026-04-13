@@ -698,6 +698,19 @@ static bool test_ssrf(ScanParams *p, const char *url,
 #define MAX_PAGES 512
 #define MAX_FORMS_W 512
 
+/* Visited URL hash set — O(1) dedup */
+static char _vis_set[4096][2048];
+static bool _vis_inited = false;
+static bool vis_check_add(const char *u) {
+    if (!_vis_inited) { memset(_vis_set,0,sizeof(_vis_set)); _vis_inited=true; }
+    unsigned int h=5381;
+    for(const char*c=u;*c;c++) h=((h<<5)+h)^(unsigned char)*c;
+    unsigned int slot=h&4095;
+    if(_vis_set[slot][0] && strcmp(_vis_set[slot],u)==0) return true;
+    strncpy(_vis_set[slot],u,2047);
+    return false;
+}
+
 DWORD WINAPI scan_thread(LPVOID arg) {
     ScanParams *p = (ScanParams *)arg;
 
@@ -726,6 +739,10 @@ DWORD WINAPI scan_thread(LPVOID arg) {
     snprintf(queue[tail], MAX_URL, "%s", p->url);
     queue_depth[tail] = 0;
     tail++;
+
+    /* Reset visited hash for this scan */
+    memset(_vis_set, 0, sizeof(_vis_set)); _vis_inited = true;
+    vis_check_add(p->url);
 
     int page_count = 0, form_count = 0;
     int rate_ms = (p->rate > 0) ? (1000 / p->rate) : 50;
@@ -773,21 +790,12 @@ DWORD WINAPI scan_thread(LPVOID arg) {
                     int nl2 = extract_links(cur, resp->body, links2,
                                            MAX_LINKS_PER_PAGE, scope_host);
                     for (int i=0; i<nl2; i++) {
-                        bool seen = false;
-                        int qi = head;
-                        while (qi != tail) {
-                            if (strcmp(queue[qi], links2[i])==0){seen=true;break;}
-                            qi=(qi+1)%MAX_Q;
-                        }
-                        if (!seen) for (int pj=0;pj<page_count;pj++)
-                            if(strcmp(pages[pj],links2[i])==0){seen=true;break;}
-                        if (!seen) {
-                            int nt=(tail+1)%MAX_Q;
-                            if(nt!=head){
-                                snprintf(queue[tail],MAX_URL,"%s",links2[i]);
-                                queue_depth[tail]=cur_depth+1;
-                                tail=nt;
-                            }
+                        if (vis_check_add(links2[i])) continue;
+                        int nt=(tail+1)%MAX_Q;
+                        if(nt!=head){
+                            snprintf(queue[tail],MAX_URL,"%s",links2[i]);
+                            queue_depth[tail]=cur_depth+1;
+                            tail=nt;
                         }
                     }
                     free(links2);
@@ -819,25 +827,13 @@ DWORD WINAPI scan_thread(LPVOID arg) {
                 int enq = 0;
                 for (int i = 0; i < nl; i++) {
                     /* Dedup: check entire queue */
-                    bool seen = false;
-                    int qi = head;
-                    while (qi != tail) {
-                        if (strcmp(queue[qi], links[i]) == 0) { seen=true; break; }
-                        qi = (qi+1) % MAX_Q;
-                    }
-                    /* Also check already-processed pages */
-                    if (!seen)
-                        for (int pj=0; pj<page_count; pj++)
-                            if (strcmp(pages[pj], links[i])==0) { seen=true; break; }
-
-                    if (!seen) {
-                        int next_tail = (tail+1) % MAX_Q;
-                        if (next_tail != head) { /* queue not full */
-                            snprintf(queue[tail], MAX_URL, "%s", links[i]);
-                            queue_depth[tail] = cur_depth + 1;
-                            tail = next_tail;
-                            enq++;
-                        }
+                    if (vis_check_add(links[i])) continue;
+                    int next_tail = (tail+1) % MAX_Q;
+                    if (next_tail != head) {
+                        snprintf(queue[tail], MAX_URL, "%s", links[i]);
+                        queue_depth[tail] = cur_depth + 1;
+                        tail = next_tail;
+                        enq++;
                     }
                 }
                 if (nl > 0)
@@ -887,10 +883,8 @@ DWORD WINAPI scan_thread(LPVOID arg) {
 
     /* ── Always add GET form with common params for every page ── */
     const char *cparams[] = {
-        "id","q","s","search","query","page","cat","file",
-        "path","url","redirect","lang","type","view","name",
-        "user","pass","username","password","token","key",
-        "action","cmd","exec","order","sort","dir", NULL
+        "id","q","s","search","page","url","redirect","file",
+        "path","cmd","action","token", NULL
     };
     for (int pi = 0; pi < page_count && form_count < MAX_FORMS_W; pi++) {
         char base_no_qs[MAX_URL]={0};

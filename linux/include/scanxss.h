@@ -276,16 +276,17 @@ char *base_url  (const char *url);
 char *resolve_url(const char *base, const char *href);
 
 /* keep old session.c names as thin wrappers (for test compat) */
-static inline int  session_open(ScanContext *c)              { return db_open(c); }
-static inline void session_close(ScanContext *c)             { db_close(c); }
-static inline int  session_save_url(ScanContext *c, const char *u) { return db_save_url(c,u); }
-static inline int  session_url_visited(ScanContext *c, const char *u) { return db_url_visited(c,u); }
-static inline int  session_save_form(ScanContext *c, const Form *f)   { return db_save_form(c,f); }
-static inline int  session_load_crawl(ScanContext *c)        { return db_load_crawl(c); }
-static inline void session_save_vuln(ScanContext *c, const Vuln *v) {
-    Vuln copy = *v; db_save_finding(c, &copy);
-}
-static inline int  session_load_vulns(ScanContext *c)        { return db_load_findings(c, 0); }
-static inline void session_flush(ScanContext *c)             { db_flush_all(c); }
+
+
+/* ── Session API (session.c) ──────────────────────────────── */
+int  session_open(ScanContext *c);
+void session_close(ScanContext *c);
+void session_flush(ScanContext *c);
+int  session_save_url(ScanContext *c, const char *u);
+int  session_url_visited(ScanContext *c, const char *u);
+int  session_save_form(ScanContext *c, const Form *f);
+int  session_load_crawl(ScanContext *c);
+int  session_save_vuln(ScanContext *c, const Vuln *v);
+int  session_load_vulns(ScanContext *c);
 
 #endif /* SCANXSS_H */

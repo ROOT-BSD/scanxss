@@ -82,6 +82,7 @@ OBJ := \
     $(BD)/src_report.o   \
     $(BD)/src_rate.o     \
     $(BD)/src_progress.o \
+    $(BD)/src_session.o  \
     $(BD)/src_db.o       \
     $(BD)/mod_xss.o      \
     $(BD)/mod_sqli.o     \
@@ -89,6 +90,10 @@ OBJ := \
     $(BD)/mod_ssrf.o
 
 LIB_OBJ := $(filter-out $(BD)/src_main.o, $(OBJ))
+
+# ── Default target (must be first) ─────────────────────────
+.PHONY: all clean test check-deps help vendor-sqlite
+all: check-deps $(TARGET)
 
 # ── Explicit per-file rules (avoids GNU Make 4.3+ pattern ambiguity) ──
 $(BD)/src_main.o:     src/main.c     ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
@@ -99,6 +104,7 @@ $(BD)/src_attack.o:   src/attack.c   ; @mkdir -p $(BD) && echo "  CC  $<" && $(C
 $(BD)/src_report.o:   src/report.c   ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
 $(BD)/src_rate.o:     src/rate.c     ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
 $(BD)/src_progress.o: src/progress.c ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
+$(BD)/src_session.o: src/session.c  ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
 $(BD)/src_db.o:       src/db.c       ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
 $(BD)/mod_xss.o:      modules/mod_xss.c   ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
 $(BD)/mod_sqli.o:     modules/mod_sqli.c  ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
@@ -120,8 +126,7 @@ $(TEST_BIN): tests/test_integration.c $(LIB_OBJ)
 	@echo "  CC  tests/test_integration.c"
 	@$(CC) $(CFLAGS) $< $(LIB_OBJ) -o $@ $(LDFLAGS)
 
-.PHONY: all clean test check-deps help
-all: check-deps $(TARGET)
+.PHONY: clean test check-deps help vendor-sqlite
 
 test: $(TARGET) $(TEST_BIN)
 	@echo "=== CLI tests ==="
