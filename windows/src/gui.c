@@ -811,7 +811,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
         case IDM_HELP_ABOUT:
             MessageBoxW(hwnd,
-                L"ScanXSS v1.3.1\n"
+                L"ScanXSS v1.3.1.1\n"
                 L"Web Vulnerability Scanner\n\n"
                 L"Modules: XSS, SQLi, LFI, RCE, SSRF,\n"
                 L"Open Redirect, CRLF Injection\n\n"

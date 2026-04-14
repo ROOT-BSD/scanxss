@@ -756,8 +756,8 @@ DWORD WINAPI scan_thread(LPVOID arg) {
         cur_depth = queue_depth[head];
         head = (head + 1) % MAX_Q;
 
-        /* rate limit */
-        Sleep(rate_ms);
+        /* rate limit — crawl uses less delay */
+        Sleep(max(10, rate_ms/2));
 
         WinResp *resp = whttp_get(p, cur);
         if (!resp) { continue; }
@@ -926,15 +926,14 @@ DWORD WINAPI scan_thread(LPVOID arg) {
               f->url, f->method?"POST":"GET", f->param_count);
 
         for (int pi2 = 0; pi2 < f->param_count && !p->stop_requested; pi2++) {
-            Sleep(rate_ms);
             const char *pm = f->params[pi2];
 
             if (p->modules & 0x01) { /* XSS */
+                Sleep(rate_ms);
                 bool reflected = probe_reflect(p, f->url, pm);
                 for (int xi=0; xi<_px_xss_count && !p->stop_requested; xi++) {
-                    Sleep(rate_ms);
-                    /* POST forms: test all payloads regardless of probe */
                     if (!reflected && f->method == 0 && xi < 2) continue;
+                    Sleep(rate_ms);
                     if (test_xss(p, f->url, pm, xi)) break;
                 }
                 UPD_PROG();
@@ -947,15 +946,19 @@ DWORD WINAPI scan_thread(LPVOID arg) {
                 UPD_PROG();
             }
             if (p->modules & 0x04) { /* LFI */
-                for (int li=0; li<_px_lfi_count && !p->stop_requested; li++)
+                for (int li=0; li<_px_lfi_count && !p->stop_requested; li++) {
+                    Sleep(rate_ms);
                     if (test_lfi(p, f->url, pm, li)) break;
+                }
                 UPD_PROG();
             }
             if (p->modules & 0x08) { /* RCE */
+                Sleep(rate_ms);
                 test_rce(p, f->url, pm);
                 UPD_PROG();
             }
             if (p->modules & 0x10) { /* SSRF */
+                Sleep(rate_ms);
                 test_ssrf(p, f->url, pm);
                 UPD_PROG();
             }

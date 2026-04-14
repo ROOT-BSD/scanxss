@@ -1,0 +1,13 @@
+*.o
+*.a
+build/
+*.db
+DB_SCAN/
+report/
+.DS_Store
+*.pdb
+Thumbs.db
+*.key
+codesign.pfx
+*.log
+__pycache__/

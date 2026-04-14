@@ -7,7 +7,7 @@ ManifestDPIAware true
 
 ;--- General ---
 !define APP_NAME        "ScanXSS"
-!define APP_VERSION     "1.3.1"
+!define APP_VERSION     "1.3.1.1"
 !define APP_PUBLISHER   "root_bsd (root_bsd@itprof.net.ua)"
 !define APP_URL         "https://github.com/ROOT-BSD/scanxss"
 !define APP_EXE         "scanxss-gui.exe"

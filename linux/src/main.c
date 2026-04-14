@@ -18,6 +18,7 @@
  */
 
 #include "scanxss.h"
+#include <sys/stat.h>
 #include <getopt.h>
 
 static void print_banner(void) {
@@ -33,7 +34,7 @@ COL_RESET
 COL_BOLD
 "\n"
 "╔══════════════════════════════════════════════╗\n"
-"║  ScanXSS v1.3.1 — Web Vulnerability Scanner  ║\n"
+"║  ScanXSS v1.3.1.1 — Web Vulnerability Scanner  ║\n"
 "║   © 2026 root_bsd <root_bsd@itprof.net.ua>   ║\n"
 "║                   GPL-2.0                    ║\n"
 "╚══════════════════════════════════════════════╝\n\n"
@@ -139,6 +140,8 @@ enum {
     OPT_RESUME, OPT_RESCAN, OPT_RETARGET, OPT_RESCAN_FROM,
     OPT_LIST_SCANS, OPT_SHOW_SCAN, OPT_DELETE_SCAN, OPT_WIPE, OPT_NO_BROWSER,
     OPT_ENDPOINT,
+    OPT_SETUP_EMAIL,
+    OPT_EMAIL_HISTORY,
 };
 static struct option long_opts[] = {
     {"url",          required_argument,0,'u'},
@@ -169,10 +172,21 @@ static struct option long_opts[] = {
     {"wipe",         no_argument,      0,OPT_WIPE},
     {"no-browser",   no_argument,      0,OPT_NO_BROWSER},
     {"endpoint",     required_argument,0,OPT_ENDPOINT},
+    {"setup-email",  no_argument,      0,OPT_SETUP_EMAIL},
+    {"email-history",no_argument,     0,OPT_EMAIL_HISTORY},
     {"help",         no_argument,      0,'h'},
     {"version",      no_argument,      0,'V'},
     {0,0,0,0}
 };
+
+/* Forward declarations */
+static void smtp_setup_wizard(ScanXSSConfig *cfg);
+static void cmd_email_history(ScanContext *ctx, ScanXSSConfig *cfg);
+static int generate_report_for_scan(ScanContext *ctx, int64_t scan_id,
+    char *html_out, char *txt_out, size_t outsz);
+static void interactive_email_menu(ScanXSSConfig *cfg,
+    const char *html_path, const char *txt_path,
+    const char *target_host, int vuln_count);
 
 int main(int argc, char *argv[]) {
     ScanContext *ctx = calloc(1, sizeof(ScanContext));
@@ -195,7 +209,14 @@ int main(int argc, char *argv[]) {
     int64_t show_scan_id = 0, delete_scan_id = 0;
     bool do_list = false, do_show = false, do_delete = false, do_wipe = false;
 
-    if (argc < 2) { print_banner(); print_usage(argv[0]); free(ctx); return 1; }
+    /* Allow standalone commands without -u */
+    bool _standalone = false;
+    for (int _j=1;_j<argc;_j++) {
+        if (strcmp(argv[_j],"--email-history")==0 ||
+            strcmp(argv[_j],"--setup-email")==0 ||
+            strcmp(argv[_j],"--list-modules")==0) { _standalone=true; break; }
+    }
+    if (argc < 2 && !_standalone) { print_banner(); print_usage(argv[0]); free(ctx); return 1; }
     int opt, idx=0;
     while ((opt=getopt_long(argc,argv,"u:d:t:l:s:r:m:o:f:vp:c:a:hV",
                             long_opts,&idx)) != -1) {
@@ -233,11 +254,13 @@ int main(int argc, char *argv[]) {
         case OPT_ENDPOINT:    strncpy(cfg->endpoint,optarg,MAX_URL_LEN-1); break;
         case 'V': printf("%s %s\n",SCANXSS_NAME,SCANXSS_VERSION); free(ctx); return 0;
         case 'h': print_banner(); print_usage(argv[0]); free(ctx); return 0;
+        case OPT_SETUP_EMAIL:   break; /* handled after getopt */
+        case OPT_EMAIL_HISTORY: break; /* handled after getopt */
         default:  print_usage(argv[0]); free(ctx); return 1;
         }
     }
 
-    if (!cfg->target_url[0]) {
+    if (!cfg->target_url[0] && !_standalone) {
         fprintf(stderr,"Error: specify target with -u URL\n"); free(ctx); return 1;
     }
 
@@ -260,6 +283,42 @@ int main(int argc, char *argv[]) {
     }
 
     print_banner();
+
+    /* Load config file */
+    ScanXSSConfig email_cfg;
+    config_load(&email_cfg);
+
+    /* --setup-email: launch wizard and exit */
+    for (int _i=1; _i<argc; _i++) {
+        if (strcmp(argv[_i], "--setup-email") == 0) {
+            smtp_setup_wizard(&email_cfg);
+            free(ctx); return 0;
+        }
+        if (strcmp(argv[_i], "--email-history") == 0) {
+            /* DB path uses target_url — set placeholder to open global DB */
+            if (!cfg->target_url[0])
+                strncpy(cfg->target_url, "scanxss://history",
+                        MAX_URL_LEN-1);
+            if (db_open(ctx) != 0) {
+                fprintf(stderr, "Cannot open DB\n");
+                free(ctx); return 1;
+            }
+            cmd_email_history(ctx, &email_cfg);
+            db_close(ctx); free(ctx); return 0;
+        }
+    }
+
+    /* Apply config defaults if not set by args */
+    if (cfg->depth   == 0 && email_cfg.default_depth   > 0)
+        cfg->depth   = email_cfg.default_depth;
+    if (cfg->rate    == 0 && email_cfg.default_rate    > 0)
+        cfg->rate    = email_cfg.default_rate;
+    if (cfg->timeout == 0 && email_cfg.default_timeout > 0)
+        cfg->timeout = email_cfg.default_timeout;
+    if (!cfg->scope[0] && email_cfg.default_scope[0])
+        strncpy(cfg->scope, email_cfg.default_scope, sizeof(cfg->scope)-1);
+    if (!cfg->report_dir[0] && email_cfg.report_dir_override[0])
+        strncpy(cfg->report_dir, email_cfg.report_dir_override, sizeof(cfg->report_dir)-1);
     printf(COL_CYAN "Target: %s\n" COL_RESET, cfg->target_url);
     const char *mode_name[] = {"FULL","RESUME","RESCAN","RETARGET"};
     printf("Mode:   %s%s%s  |  depth:%d  timeout:%ds  rate:%d/s\n",
@@ -376,8 +435,476 @@ int main(int argc, char *argv[]) {
     }
 
     print_summary(ctx);
+
+    /* ── Інтерактивне меню e-mail при знайдених вразливостях ── */
+    if (ctx->vuln_count > 0) {
+        /* Знайти останні звіти */
+        char _html[768]={0}, _txt[768]={0}, _host[256]={0};
+        const char *_u = ctx->config.target_url;
+        if (strncmp(_u,"https://",8)==0) _u+=8;
+        else if (strncmp(_u,"http://",7)==0) _u+=7;
+        size_t _hi=0;
+        for(;*_u&&*_u!="/"[0]&&_hi<255;_u++) _host[_hi++]=*_u;
+        const char *_home = getenv("HOME"); if(!_home) _home="/tmp";
+        char _rdir[512]={0};
+        if (ctx->config.report_dir[0])
+            snprintf(_rdir,sizeof(_rdir),"%s",ctx->config.report_dir);
+#ifdef __APPLE__
+        else snprintf(_rdir,sizeof(_rdir),"%s/Desktop/report/%s",_home,_host);
+#else
+        else { const char *_b=ctx->config.exe_dir[0]?ctx->config.exe_dir:".";
+               snprintf(_rdir,sizeof(_rdir),"%s/../report/%s",_b,_host); }
+#endif
+        char _fc[800]={0};
+        snprintf(_fc,sizeof(_fc),"ls -t \"%s\"/*.html 2>/dev/null|head -1",_rdir);
+        FILE *_fp=popen(_fc,"r");
+        if (_fp) {
+            if (fgets(_html, sizeof(_html)-1, _fp))
+                _html[strcspn(_html, "\n")] = '\0';
+            pclose(_fp);
+        }
+        snprintf(_fc,sizeof(_fc),"ls -t \"%s\"/*.txt 2>/dev/null|head -1",_rdir);
+        _fp=popen(_fc,"r");
+        if (_fp) {
+            if (fgets(_txt, sizeof(_txt)-1, _fp))
+                _txt[strcspn(_txt, "\n")] = '\0';
+            pclose(_fp);
+        }
+        interactive_email_menu(&email_cfg, _html, _txt,
+                               _host, ctx->vuln_count);
+    }
+
+    /* ── Auto-send email if configured AND vulns=0 (interactive menu handles vuln case) ── */
+    if (email_cfg.email_enabled && ctx->vuln_count == 0) {
+        /* Find latest reports in report directory */
+        char html_p[768]={0}, txt_p[768]={0};
+        char host2[256]={0};
+        const char *u2 = ctx->config.target_url;
+        if (strncmp(u2,"https://",8)==0) u2+=8;
+        else if (strncmp(u2,"http://",7)==0) u2+=7;
+        size_t h2i=0;
+        for(;*u2&&*u2!="/"[0]&&h2i<255;u2++) host2[h2i++]=*u2;
+        const char *home2 = getenv("HOME"); if(!home2) home2="/tmp";
+        char rdir2[512]={0};
+        if (ctx->config.report_dir[0])
+            snprintf(rdir2,sizeof(rdir2),"%s",ctx->config.report_dir);
+#ifdef __APPLE__
+        else snprintf(rdir2,sizeof(rdir2),"%s/Desktop/report/%s",home2,host2);
+#else
+        else { const char *b=ctx->config.exe_dir[0]?ctx->config.exe_dir:".";
+               snprintf(rdir2,sizeof(rdir2),"%s/../report/%s",b,host2); }
+#endif
+        /* Newest HTML */
+        char fc[800]={0};
+        snprintf(fc,sizeof(fc),"ls -t \"%s\"/*.html 2>/dev/null | head -1",rdir2);
+        FILE *fp2=popen(fc,"r");
+        if(fp2){fgets(html_p,sizeof(html_p)-1,fp2);
+                html_p[strcspn(html_p,"\n")]="\0"[0]; pclose(fp2);}
+        /* Newest TXT */
+        snprintf(fc,sizeof(fc),"ls -t \"%s\"/*.txt 2>/dev/null | head -1",rdir2);
+        FILE *fp3=popen(fc,"r");
+        if(fp3){fgets(txt_p,sizeof(txt_p)-1,fp3);
+                txt_p[strcspn(txt_p,"\n")]="\0"[0]; pclose(fp3);}
+        email_send_report(&email_cfg, host2, ctx->vuln_count,
+                          html_p[0]?html_p:NULL, txt_p[0]?txt_p:NULL);
+    }
+
     db_close(ctx);
     int rc = ctx->vuln_count > 0 ? 2 : 0;
     free(ctx);
     return rc;
+}
+
+/* ── SMTP setup wizard ───────────────────────────────────────
+ * Запитує параметри поштового сервера і зберігає в конфіг    */
+static void smtp_setup_wizard(ScanXSSConfig *cfg) {
+    printf("\n");
+    printf(COL_BOLD "╔══════════════════════════════════════════════╗\n" COL_RESET);
+    printf(COL_BOLD "║       Налаштування поштового сервера         ║\n" COL_RESET);
+    printf(COL_BOLD "╚══════════════════════════════════════════════╝\n\n" COL_RESET);
+    printf("  Підтримується будь-який SMTP сервер з STARTTLS.\n");
+    printf("  Натисніть Enter для залишення поточного значення.\n\n");
+
+    char buf[512];
+
+    /* smtp_host */
+    printf("  SMTP сервер [%s]: ",
+           cfg->smtp_host[0] ? cfg->smtp_host : "mail.example.com");
+    fflush(stdout);
+    if (fgets(buf, sizeof(buf), stdin)) { /* smtp_host */
+        buf[strcspn(buf, "\r\n")] = '\0';
+        if (buf[0]) strncpy(cfg->smtp_host, buf, sizeof(cfg->smtp_host)-1);
+    }
+
+    /* smtp_port */
+    printf("  Порт [%d] (587=STARTTLS, 25=plain): ", cfg->smtp_port ? cfg->smtp_port : 587);
+    fflush(stdout);
+    if (fgets(buf, sizeof(buf), stdin)) {
+        buf[strcspn(buf, "\r\n")] = '\0';
+        if (buf[0]) cfg->smtp_port = atoi(buf);
+        else if (!cfg->smtp_port) cfg->smtp_port = 587;
+    }
+
+    /* smtp_tls */
+    cfg->smtp_tls = (cfg->smtp_port == 587);
+    printf("  STARTTLS: %s\n", cfg->smtp_tls ? "так (порт 587)" : "ні");
+
+    /* smtp_user */
+    printf("  Логін (smtp_user) [%s]: ", cfg->smtp_user[0] ? cfg->smtp_user : "");
+    fflush(stdout);
+    if (fgets(buf, sizeof(buf), stdin)) {
+        buf[strcspn(buf, "\r\n")] = '\0';
+        if (buf[0]) strncpy(cfg->smtp_user, buf, sizeof(cfg->smtp_user)-1);
+    }
+
+    /* smtp_pass — не виводимо поточне значення */
+    printf("  Пароль (smtp_pass) [%s]: ",
+           cfg->smtp_pass[0] ? "****" : "");
+    fflush(stdout);
+    if (fgets(buf, sizeof(buf), stdin)) {
+        buf[strcspn(buf, "\r\n")] = '\0';
+        if (buf[0]) strncpy(cfg->smtp_pass, buf, sizeof(cfg->smtp_pass)-1);
+    }
+
+    /* email_from */
+    const char *def_from = cfg->email_from[0] ? cfg->email_from : cfg->smtp_user;
+    printf("  Відправник email_from [%s]: ", def_from);
+    fflush(stdout);
+    if (fgets(buf, sizeof(buf), stdin)) {
+        buf[strcspn(buf, "\r\n")] = '\0';
+        if (buf[0]) strncpy(cfg->email_from, buf, sizeof(cfg->email_from)-1);
+        else if (!cfg->email_from[0])
+            strncpy(cfg->email_from, cfg->smtp_user, sizeof(cfg->email_from)-1);
+    }
+
+    /* Зберегти в ~/.scanxss/scanxss.conf */
+    const char *home = getenv("HOME");
+    if (home) {
+        char dir[512], path[512];
+        snprintf(dir,  sizeof(dir),  "%s/.scanxss", home);
+        snprintf(path, sizeof(path), "%s/.scanxss/scanxss.conf", home);
+
+        mkdir(dir, 0700);
+
+        FILE *cf = fopen(path, "w");
+        if (cf) {
+            fprintf(cf, "# ScanXSS v1.3.1.1 — автоматично збережений конфіг\n");
+            fprintf(cf, "email_enabled    = false\n");
+            fprintf(cf, "smtp_host        = %s\n", cfg->smtp_host);
+            fprintf(cf, "smtp_port        = %d\n", cfg->smtp_port);
+            fprintf(cf, "smtp_tls         = %s\n", cfg->smtp_tls ? "true" : "false");
+            fprintf(cf, "smtp_user        = %s\n", cfg->smtp_user);
+            fprintf(cf, "smtp_pass        = %s\n", cfg->smtp_pass);
+            fprintf(cf, "email_from       = %s\n", cfg->email_from);
+            fprintf(cf, "email_to         = \n");
+            fprintf(cf, "email_subject    = [ScanXSS] Report: %%h — %%v vuln(s) found (%%d)\n");
+            fprintf(cf, "email_only_vulns = true\n");
+            fprintf(cf, "email_attach_html = true\n");
+            fprintf(cf, "default_depth    = 3\n");
+            fprintf(cf, "default_rate     = 10\n");
+            fprintf(cf, "default_timeout  = 10\n");
+            fprintf(cf, "default_scope    = subdomain\n");
+            fclose(cf);
+            printf(COL_GREEN "\n  ✅  Збережено: %s\n" COL_RESET, path);
+        }
+    }
+
+    cfg->email_enabled = true;
+    printf(COL_GREEN "  Налаштування завершено.\n\n" COL_RESET);
+}
+
+/* ── Інтерактивне меню відправки після сканування ───────────
+ * Викликається якщо знайдено вразливості                      */
+static void interactive_email_menu(ScanXSSConfig *cfg,
+                                   const char *html_path,
+                                   const char *txt_path,
+                                   const char *target_host,
+                                   int vuln_count) {
+    printf("\n");
+    printf(COL_BOLD "╔══════════════════════════════════════════════╗\n" COL_RESET);
+    printf(COL_BOLD "║           Відправка звіту на e-mail          ║\n" COL_RESET);
+    printf(COL_BOLD "╚══════════════════════════════════════════════╝\n" COL_RESET);
+    printf("  Знайдено " COL_RED "%d" COL_RESET " вразливість(ей) на " COL_CYAN "%s\n\n" COL_RESET,
+           vuln_count, target_host);
+
+    /* Перевірити чи налаштований SMTP */
+    bool smtp_ok = cfg->smtp_host[0] && cfg->smtp_user[0];
+
+    printf("  [1] Відправити звіт на e-mail\n");
+    printf("  [2] Налаштувати поштовий сервер\n");
+    printf("  [3] Пропустити\n");
+    printf("\n  Вибір [1-3]: ");
+    fflush(stdout);
+
+    char choice[8] = {0};
+    if (!fgets(choice, sizeof(choice), stdin)) return;
+    choice[strcspn(choice, "\r\n")] = '\0';
+
+    if (choice[0] == '3' || choice[0] == '\0') return;
+
+    if (choice[0] == '2') {
+        smtp_setup_wizard(cfg);
+        smtp_ok = cfg->smtp_host[0] && cfg->smtp_user[0];
+        /* Після налаштування запропонувати відправити */
+        printf("  Відправити зараз? [y/N]: ");
+        fflush(stdout);
+        char yn[8]={0};
+        if (!fgets(yn, sizeof(yn), stdin)) return;
+        if (yn[0] != 'y' && yn[0] != 'Y') return;
+        choice[0] = '1'; /* fall through to send */
+    }
+
+    if (choice[0] == '1') {
+        if (!smtp_ok) {
+            printf(COL_YELLOW "  ⚠  SMTP не налаштований. Запускаємо майстер...\n" COL_RESET);
+            smtp_setup_wizard(cfg);
+        }
+
+        /* Ввід email отримувача */
+        char email_to[512] = {0};
+        printf("\n  Отримувач (e-mail): ");
+        fflush(stdout);
+        if (!fgets(email_to, sizeof(email_to), stdin)) return;
+        email_to[strcspn(email_to, "\r\n")] = '\0';
+
+        if (!email_to[0]) {
+            printf(COL_YELLOW "  Email не введено — скасовано.\n" COL_RESET);
+            return;
+        }
+
+        /* Перевірити мінімальний формат */
+        if (!strchr(email_to, '@')) {
+            printf(COL_RED "  Невірний формат e-mail.\n" COL_RESET);
+            return;
+        }
+
+        /* Можна ввести кілька через кому */
+        printf("  Відправник [%s]: ",
+               cfg->email_from[0] ? cfg->email_from : cfg->smtp_user);
+        fflush(stdout);
+        char email_from[256] = {0};
+        if (fgets(email_from, sizeof(email_from), stdin)) {
+            email_from[strcspn(email_from, "\r\n")] = '\0';
+            if (email_from[0])
+                strncpy(cfg->email_from, email_from, sizeof(cfg->email_from)-1);
+            else if (!cfg->email_from[0])
+                strncpy(cfg->email_from, cfg->smtp_user, sizeof(cfg->email_from)-1);
+        }
+
+        /* Тема листа */
+        char subj_tpl[512];
+        snprintf(subj_tpl, sizeof(subj_tpl),
+                 "[ScanXSS] Report: %s — %d vuln(s) found", target_host, vuln_count);
+        printf("  Тема [%s]: ", subj_tpl);
+        fflush(stdout);
+        char subj_in[512] = {0};
+        if (fgets(subj_in, sizeof(subj_in), stdin)) {
+            subj_in[strcspn(subj_in, "\r\n")] = '\0';
+        }
+        const char *final_subj = subj_in[0] ? subj_in : subj_tpl;
+
+        /* Прикріпити HTML? */
+        printf("  Прикріпити HTML звіт? [Y/n]: ");
+        fflush(stdout);
+        char attach[8]={0};
+        if (fgets(attach, sizeof(attach), stdin)) {
+            attach[strcspn(attach, "\r\n")] = '\0';
+        }
+        cfg->email_attach_html = !(attach[0]=='n' || attach[0]=='N');
+
+        /* Встановити отримувача і тему для цього відправлення */
+        ScanXSSConfig tmp_cfg = *cfg;
+        strncpy(tmp_cfg.email_to, email_to, sizeof(tmp_cfg.email_to)-1);
+        strncpy(tmp_cfg.email_subject, final_subj, sizeof(tmp_cfg.email_subject)-1);
+        tmp_cfg.email_enabled    = true;
+        tmp_cfg.email_only_vulns = false; /* відправляємо завжди */
+
+        printf("\n  Відправляємо звіт на: " COL_CYAN "%s" COL_RESET "\n", email_to);
+        int rc = email_send_report(&tmp_cfg, target_host, vuln_count,
+                                   html_path[0] ? html_path : NULL,
+                                   txt_path[0]  ? txt_path  : NULL);
+        if (rc == 0)
+            printf(COL_GREEN "  ✅  Звіт відправлено!\n\n" COL_RESET);
+        else
+            printf(COL_RED "  ❌  Помилка відправки. Перевірте параметри SMTP.\n\n" COL_RESET);
+    }
+}
+
+/* Генерувати HTML звіт для сканування з БД */
+static int generate_report_for_scan(ScanContext *ctx, int64_t scan_id,
+                                     char *html_out, char *txt_out,
+                                     size_t outsz) {
+    /* Завантажити вразливості з БД */
+    ctx->vuln_count = 0;
+    db_load_findings(ctx, scan_id);
+    if (ctx->vuln_count == 0) return -1;
+
+    /* Визначити директорію */
+    const char *home = getenv("HOME"); if (!home) home = "/tmp";
+    char host[256] = {0};
+    const char *u = ctx->config.target_url;
+    if (strncmp(u,"https://",8)==0) u+=8;
+    else if (strncmp(u,"http://",7)==0) u+=7;
+    size_t hi=0; for(;*u&&*u!='/'&&hi<255;u++) host[hi++]=*u;
+
+    char rdir[512]={0};
+#ifdef __APPLE__
+    snprintf(rdir,sizeof(rdir),"%s/Desktop/report/%s",home,host);
+#else
+    const char *b=ctx->config.exe_dir[0]?ctx->config.exe_dir:".";
+    snprintf(rdir,sizeof(rdir),"%s/../report/%s",b,host);
+#endif
+    /* Створити директорію */
+    char tmp[512]={0}; strncpy(tmp,rdir,511);
+    for (char *p=tmp+1;*p;p++)
+        if(*p=='/'){ *p=0; mkdir(tmp,0755); *p='/'; }
+    mkdir(tmp,0755);
+
+    /* Шляхи файлів */
+    time_t now=time(NULL); char ts[32];
+    strftime(ts,sizeof(ts),"%Y%m%d_%H%M%S",localtime(&now));
+    snprintf(html_out, outsz, "%s/%s_resend_%s.html", rdir, host, ts);
+    snprintf(txt_out,  outsz, "%s/%s_resend_%s.txt",  rdir, host, ts);
+
+    /* Генерувати звіти */
+    report_html(ctx, html_out);
+    report_txt(ctx, txt_out);
+    return 0;
+}
+
+/* ════════════════════════════════════════════════════════════
+ * КОМАНДА: --email-history
+ * Показує всі відскановані хости з вразливостями з БД
+ * і дозволяє відправити звіт на e-mail
+ * ════════════════════════════════════════════════════════════ */
+
+/* Головна функція: --email-history */
+static void cmd_email_history(ScanContext *ctx, ScanXSSConfig *cfg) {
+    printf("\n");
+    printf(COL_BOLD "╔══════════════════════════════════════════════════╗\n" COL_RESET);
+    printf(COL_BOLD "║    Відправка звітів з архіву сканувань           ║\n" COL_RESET);
+    printf(COL_BOLD "╚══════════════════════════════════════════════════╝\n\n" COL_RESET);
+
+    ScanEntry entries[50];
+    int n = load_all_vuln_scans(ctx, entries, 50);
+
+    if (n == 0) {
+        printf(COL_YELLOW "  Немає збережених сканувань з вразливостями.\n\n" COL_RESET);
+        return;
+    }
+
+    /* Показати список */
+    printf(COL_BOLD "  %-4s  %-35s  %-19s  %-5s\n" COL_RESET,
+           "ID", "Хост", "Дата", "Vulns");
+    printf("  %-4s  %-35s  %-19s  %-5s\n",
+           "----","-----------------------------------","-------------------","-----");
+
+    for (int i = 0; i < n; i++) {
+        /* Витягти hostname з URL */
+        char host[64]={0};
+        const char *u = entries[i].target;
+        if (strncmp(u,"https://",8)==0) u+=8;
+        else if (strncmp(u,"http://",7)==0) u+=7;
+        int hi=0; while(*u&&*u!='/'&&hi<63) host[hi++]=*u++;
+
+        printf("  " COL_CYAN "%-4lld" COL_RESET "  %-35s  %-19s  "
+               COL_RED "%-5d\n" COL_RESET,
+               (long long)entries[i].scan_id,
+               host,
+               entries[i].started,
+               entries[i].vuln_count);
+    }
+
+    printf("\n  Введіть ID сканування (або 'all' для всіх, 'q' для виходу): ");
+    fflush(stdout);
+
+    char input[64]={0};
+    if (!fgets(input, sizeof(input), stdin)) return;
+    input[strcspn(input,"\r\n")] = '\0';
+
+    if (input[0]=='q' || input[0]=='\0') return;
+
+    /* Перевірити чи налаштований SMTP */
+    if (!cfg->smtp_host[0] || !cfg->smtp_user[0]) {
+        printf(COL_YELLOW "\n  SMTP не налаштований. Запускаємо майстер...\n" COL_RESET);
+        smtp_setup_wizard(cfg);
+    }
+
+    /* Ввід email */
+    printf("\n  Отримувач (e-mail): ");
+    fflush(stdout);
+    char email_to[512]={0};
+    if (!fgets(email_to, sizeof(email_to), stdin)) return;
+    email_to[strcspn(email_to,"\r\n")] = '\0';
+    if (!email_to[0] || !strchr(email_to,'@')) {
+        printf(COL_RED "  Невірний e-mail.\n" COL_RESET); return;
+    }
+
+    /* Визначити які скани відправляти */
+    bool send_all = (strcmp(input,"all")==0);
+    int64_t target_id = send_all ? 0 : (int64_t)atoll(input);
+
+    /* Підготувати конфіг відправки */
+    ScanXSSConfig send_cfg = *cfg;
+    strncpy(send_cfg.email_to, email_to, sizeof(send_cfg.email_to)-1);
+    send_cfg.email_enabled    = true;
+    send_cfg.email_only_vulns = false;
+
+    int sent=0, failed=0;
+
+    for (int i = 0; i < n; i++) {
+        if (!send_all && entries[i].scan_id != target_id) continue;
+
+        /* Встановити URL цілі для завантаження вразливостей */
+        strncpy(ctx->config.target_url, entries[i].target,
+                sizeof(ctx->config.target_url)-1);
+
+        printf("\n  [%lld] %s (%d vulns) → генеруємо звіт...\n",
+               (long long)entries[i].scan_id,
+               entries[i].target, entries[i].vuln_count);
+
+        char html_p[768]={0}, txt_p[768]={0};
+        if (generate_report_for_scan(ctx, entries[i].scan_id,
+                                     html_p, txt_p, sizeof(html_p)) < 0) {
+            printf(COL_YELLOW "  ⚠  Не вдалося завантажити вразливості.\n" COL_RESET);
+            failed++;
+            continue;
+        }
+
+        /* Тема з назвою хосту */
+        char host2[256]={0};
+        const char *u2 = entries[i].target;
+        if (strncmp(u2,"https://",8)==0) u2+=8;
+        else if (strncmp(u2,"http://",7)==0) u2+=7;
+        int h2i=0; while(*u2&&*u2!='/'&&h2i<255) host2[h2i++]=*u2++;
+
+        char subj[512];
+        snprintf(subj, sizeof(subj),
+                 "[ScanXSS] Archived Report: %s — %d vuln(s) [scan #%lld]",
+                 host2, entries[i].vuln_count,
+                 (long long)entries[i].scan_id);
+        strncpy(send_cfg.email_subject, subj, sizeof(send_cfg.email_subject)-1);
+
+        int rc = email_send_report(&send_cfg, host2,
+                                   entries[i].vuln_count,
+                                   html_p[0] ? html_p : NULL,
+                                   txt_p[0]  ? txt_p  : NULL);
+        if (rc == 0) {
+            printf(COL_GREEN "  ✅  Відправлено: %s\n" COL_RESET, email_to);
+            sent++;
+        } else {
+            printf(COL_RED "  ❌  Помилка відправки scan #%lld\n" COL_RESET,
+                   (long long)entries[i].scan_id);
+            failed++;
+        }
+
+        if (!send_all) break;
+    }
+
+    printf("\n");
+    if (sent > 0)
+        printf(COL_GREEN "  Відправлено: %d звіт(ів) на %s\n" COL_RESET, sent, email_to);
+    if (failed > 0)
+        printf(COL_RED "  Помилок: %d\n" COL_RESET, failed);
+    printf("\n");
 }

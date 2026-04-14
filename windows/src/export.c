@@ -94,7 +94,7 @@ int export_html(AppState *app, const wchar_t *path) {
         }
         fprintf(f,"</tbody></table>\n");
     }
-    fprintf(f,"</div>\n<footer>ScanXSS v1.3.1 | Web Vulnerability Scanner | © 2026 root_bsd</footer>"
+    fprintf(f,"</div>\n<footer>ScanXSS v1.3.1.1 | Web Vulnerability Scanner | © 2026 root_bsd</footer>"
               "\n</body></html>\n");
     fclose(f);
     return 0;
@@ -123,7 +123,7 @@ int export_txt(AppState *app, const wchar_t *path) {
                    : (app->scan_params && app->scan_params->url[0]
                       ? app->scan_params->url : "N/A");
 
-    fprintf(f, "ScanXSS v1.3.1 — Scan Report\n");
+    fprintf(f, "ScanXSS v1.3.1.1 — Scan Report\n");
     fprintf(f, "==============================\n");
     fprintf(f, "Target:      %s\n", url);
     fprintf(f, "Generated:   %s\n", ts);

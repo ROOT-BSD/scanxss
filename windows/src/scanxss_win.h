@@ -41,8 +41,8 @@
 
 /* ── Version ─────────────────────────────────────────────── */
 #define APP_NAME     L"ScanXSS"
-#define APP_VERSION  L"1.3.1"
-#define APP_TITLE    L"ScanXSS v1.3.1 — Web Vulnerability Scanner"
+#define APP_VERSION  L"1.3.1.1"
+#define APP_TITLE    L"ScanXSS v1.3.1.1 — Web Vulnerability Scanner"
 #define APP_CLASS    L"ScanXSSMainWnd"
 
 /* ── Window / Control IDs ─────────────────────────────────── */

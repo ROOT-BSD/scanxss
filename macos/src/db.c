@@ -636,3 +636,38 @@ void db_flush_all(ScanContext *ctx) {
         "DELETE FROM targets;");
     printf("[DB] All data wiped.\n");
 }
+
+
+
+/* Завантажити всі скани з вразливостями з БД */
+int load_all_vuln_scans(ScanContext *ctx,
+                                ScanEntry *entries, int max) {
+    if (!ctx->db) return 0;
+    sqlite3_stmt *s;
+    sqlite3_prepare_v2((sqlite3 *)ctx->db,
+        "SELECT s.id, t.url, datetime(s.started_at,'unixepoch'),"
+        "       s.vulns_found, s.status, s.mode"
+        " FROM scans s"
+        " JOIN targets t ON t.id = s.target_id"
+        " WHERE s.vulns_found > 0"
+        " ORDER BY s.id DESC"
+        " LIMIT 50",
+        -1, &s, NULL);
+    int n = 0;
+    while (sqlite3_step(s) == SQLITE_ROW && n < max) {
+        entries[n].scan_id    = sqlite3_column_int64(s, 0);
+        const char *url = (const char *)sqlite3_column_text(s, 1);
+        const char *ts  = (const char *)sqlite3_column_text(s, 2);
+        strncpy(entries[n].target,  url ? url : "?", 511);
+        strncpy(entries[n].started, ts  ? ts  : "?", 31);
+        entries[n].vuln_count = sqlite3_column_int(s, 3);
+        const char *st = (const char *)sqlite3_column_text(s, 4);
+        const char *mo = (const char *)sqlite3_column_text(s, 5);
+        strncpy(entries[n].status, st ? st : "?", 31);
+        strncpy(entries[n].mode,   mo ? mo : "?", 31);
+        n++;
+    }
+    sqlite3_finalize(s);
+    return n;
+}
+

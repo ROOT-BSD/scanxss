@@ -40,7 +40,7 @@
 #include <time.h>
 
 /* ─── Version ─────────────────────────────────────────────── */
-#define SCANXSS_VERSION  "1.3.1"
+#define SCANXSS_VERSION  "1.3.1.1"
 #define SCANXSS_NAME     "ScanXSS"
 
 /* ─── Limits ──────────────────────────────────────────────── */
@@ -288,5 +288,46 @@ int  session_save_form(ScanContext *c, const Form *f);
 int  session_load_crawl(ScanContext *c);
 int  session_save_vuln(ScanContext *c, const Vuln *v);
 int  session_load_vulns(ScanContext *c);
+
+
+/* ── Email / Config ─────────────────────────────────────── */
+typedef struct {
+    bool    email_enabled;
+    char    smtp_host[256];
+    int     smtp_port;
+    bool    smtp_tls;
+    char    smtp_user[256];
+    char    smtp_pass[256];
+    char    email_to[512];
+    char    email_from[256];
+    char    email_subject[512];
+    bool    email_only_vulns;
+    bool    email_attach_html;
+    int     default_depth;
+    int     default_rate;
+    int     default_timeout;
+    char    default_scope[32];
+    char    default_modules[128];
+    char    report_dir_override[512];
+} ScanXSSConfig;
+
+void config_init(ScanXSSConfig *cfg);
+int  config_load(ScanXSSConfig *cfg);
+int  email_send_report(const ScanXSSConfig *cfg, const char *host,
+                       int vuln_count, const char *html_path,
+                       const char *txt_path);
+
+
+/* ── Email history ─────────────────────────────────── */
+typedef struct {
+    int64_t scan_id;
+    char    target[512];
+    char    started[32];
+    int     vuln_count;
+    char    status[32];
+    char    mode[32];
+} ScanEntry;
+
+int  load_all_vuln_scans(ScanContext *ctx, ScanEntry *entries, int max);
 
 #endif /* SCANXSS_H */

@@ -83,6 +83,8 @@ OBJ := \
     $(BD)/src_rate.o     \
     $(BD)/src_progress.o \
     $(BD)/src_session.o  \
+    $(BD)/src_config.o   \
+    $(BD)/src_email.o    \
     $(BD)/src_db.o       \
     $(BD)/mod_xss.o      \
     $(BD)/mod_sqli.o     \
@@ -96,7 +98,7 @@ LIB_OBJ := $(filter-out $(BD)/src_main.o, $(OBJ))
 all: check-deps $(TARGET)
 
 # ── Explicit per-file rules (avoids GNU Make 4.3+ pattern ambiguity) ──
-$(BD)/src_main.o:     src/main.c     ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
+$(BD)/src_main.o:     src/main.c     ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -Wno-unused-result -c $< -o $@
 $(BD)/src_http.o:     src/http.c     ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
 $(BD)/src_utils.o:    src/utils.c    ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
 $(BD)/src_crawler.o:  src/crawler.c  ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
@@ -105,6 +107,8 @@ $(BD)/src_report.o:   src/report.c   ; @mkdir -p $(BD) && echo "  CC  $<" && $(C
 $(BD)/src_rate.o:     src/rate.c     ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
 $(BD)/src_progress.o: src/progress.c ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
 $(BD)/src_session.o: src/session.c  ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
+$(BD)/src_config.o:  src/config.c   ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
+$(BD)/src_email.o:   src/email.c    ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
 $(BD)/src_db.o:       src/db.c       ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
 $(BD)/mod_xss.o:      modules/mod_xss.c   ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
 $(BD)/mod_sqli.o:     modules/mod_sqli.c  ; @mkdir -p $(BD) && echo "  CC  $<" && $(CC) $(CFLAGS) -c $< -o $@
