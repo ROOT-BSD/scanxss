@@ -33,7 +33,7 @@ static void print_banner(void) {
 COL_RESET
 COL_BOLD
 "╔══════════════════════════════════════════════╗\n"
-"║  ScanXSS v1.3.1.1 — Web Vulnerability Scanner  ║\n"
+"║ ScanXSS v1.3.1.1 — Web Vulnerability Scanner ║\n"
 "║   © 2026 root_bsd <root_bsd@itprof.net.ua>   ║\n"
 "║                   GPL-2.0                    ║\n"
 "╚══════════════════════════════════════════════╝\n\n"
