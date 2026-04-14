@@ -23,16 +23,15 @@
 
 static void print_banner(void) {
     printf(COL_CYAN
-" ____                 __  ______ ____  ____\n"
-"/\\  _`\\             /\\ \\/\\  ___/\\  _`\\/\\  _`\\\n"
-"\\ \\ \\/\\ \\    ___   _\\_\\ \\ \\ \\__\\ \\ \\L\\ \\ \\L\\ \\\n"
-" \\ \\ \\ \\ \\  / __`\\/\\`'__\\ \\  __\\\\ \\  _ <\\ \\ ,  /\n"
-"  \\ \\ \\_\\ \\/\\ \\L\\ \\ \\ \\/ \\ \\ \\_/ \\ \\ \\L\\ \\ \\ \\\\ \\\n"
-"   \\ \\____/\\ \\____/\\ \\_\\  \\ \\_\\   \\ \\____/\\ \\_\\ \\_\\\n"
-"    \\/___/  \\/___/  \\/_/   \\/_/    \\/___/  \\/_/\\/ /\n"
+"\n"
+"  ███████╗ ██████╗ █████╗ ███╗  ██╗    ██╗  ██╗███████╗███████╗\n"
+"  ██╔════╝██╔════╝██╔══██╗████╗ ██║    ╚██╗██╔╝██╔════╝██╔════╝\n"
+"  ███████╗██║     ███████║██╔██╗██║     ╚███╔╝ ███████╗███████╗\n"
+"  ╚════██║██║     ██╔══██║██║╚████║     ██╔██╗ ╚════██║╚════██║\n"
+"  ███████║╚██████╗██║  ██║██║ ╚███║    ██╔╝╚██╗███████║███████║\n"
+"  ╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚══╝   ╚═╝  ╚═╝╚══════╝╚══════╝\n"
 COL_RESET
 COL_BOLD
-"\n"
 "╔══════════════════════════════════════════════╗\n"
 "║  ScanXSS v1.3.1.1 — Web Vulnerability Scanner  ║\n"
 "║   © 2026 root_bsd <root_bsd@itprof.net.ua>   ║\n"
@@ -75,12 +74,19 @@ static void print_usage(const char *prog) {
            "  -c COOKIE           Cookies\n"
            "  -a USER_AGENT       User-Agent\n"
            "  --endpoint URL      SSRF callback\n\n");
+    printf("Пошта:\n"
+           "  --setup-email       Майстер налаштування SMTP (зберігає у ~/.scanxss/scanxss.conf)\n"
+           "  --email-history     Список відсканованих хостів з вразливостями, відправка на e-mail\n\n");
+    printf("Інше:\n"
+           "  --list-modules      Показати список модулів\n"
+           "  -h, --help          Ця довідка\n"
+           "  -V, --version       Версія\n\n");
     printf("Приклади:\n"
-           "  %s -u http://site.com/ -f html -o rep.html\n"
-           "  %s -u http://site.com/ --rescan -f html -o new.html\n"
-           "  %s -u http://site.com/ --retarget\n"
-           "  %s -u http://site.com/ --list-scans\n"
-           "  %s -u http://site.com/ --wipe\n\n", prog,prog,prog,prog,prog);
+           "  %s -u http://site.com/\n"
+           "  %s -u http://site.com/ -d 5 -r 5 -m xss,sqli\n"
+           "  %s -u http://site.com/ --resume\n"
+           "  %s --setup-email\n"
+           "  %s --email-history\n\n", prog,prog,prog,prog,prog);
 }
 
 static VulnType parse_modules(const char *s) {
