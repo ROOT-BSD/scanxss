@@ -259,8 +259,9 @@
 // ── Banner ────────────────────────────────────────────────
 - (void)printBanner {
     [self appendLine:@"╔══════════════════════════════════════════════════╗" color:COL_BLUE];
-    [self appendLine:@"║   ScanXSS v1.3.1.1 — Web Vulnerability Scanner    ║" color:COL_CYAN];
-    [self appendLine:@"║   © 2026 root_bsd <root_bsd@itprof.net.ua>  GPL-2.0 ║" color:COL_GRAY];
+    [self appendLine:@"║  ScanXSS v1.3.1.1 — Web Vulnerability Scanner    ║" color:COL_CYAN];
+    [self appendLine:@"║    © 2026 root_bsd <root_bsd@itprof.net.ua>      ║" color:COL_GRAY];
+    [self appendLine:@"║                   GPL-2.0                        ║" color:COL_GRAY];
     [self appendLine:@"╚══════════════════════════════════════════════════╝" color:COL_BLUE];
     [self appendLine:@"" color:COL_GRAY];
     [self appendLine:@"  Введіть URL та натисніть ▶ Start Scan" color:COL_GRAY];
