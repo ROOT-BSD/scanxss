@@ -1,4 +1,4 @@
-# ScanXSS v1.3.1.1 — Web Vulnerability Scanner
+# ScanXSS v1.3.2 — Web Vulnerability Scanner
 
 > Автоматизований сканер вразливостей веб-застосунків з відкритим кодом.
 > © 2026 root_bsd \<root_bsd@itprof.net.ua\> | GPL-2.0
@@ -222,18 +222,29 @@ osslsigncode sign \
 
 ---
 
-## Зміни v1.3.1.1
+## Зміни v1.3.2 — 2026-04-18
 
-- Нативний SMTP клієнт з STARTTLS (email.c + config.c)
-- Інтерактивне меню email після сканування
-- `--setup-email` — майстер налаштування SMTP
-- Виправлено crawler: O(1) hash, session_url_visited по scan_id
-- Windows: автозбереження звітів на Desktop\REPORT\
-- Makefile: target `all` першим, session.c в OBJ
-- JSON звіти видалено (HTML + TXT)
-- macOS звіти: ~/Desktop/report/<host>/
-- Банер з правильним вирівнюванням
+### Security — критичні виправлення безпеки
 
+- **Shell injection через `popen()`** — hostname з `target_url` вставлявся
+  напряму в shell-команду. Замінено на `find_newest_file()` через POSIX
+  `opendir`/`readdir`/`stat` без жодного виклику shell.
+- **RCE через `system()` (macOS)** — шлях до звіту передавався в
+  `system("open \"...\" &")`. Замінено на `fork()` + `execve()`.
+- **SMTP-пароль з небезпечними правами** — `~/.scanxss/scanxss.conf`
+  створювався з `umask`-правами (зазвичай `0644`). Виправлено на
+  `open(..., 0600)` — тільки власник може читати.
+
+### Fixed — виправлення помилок
+
+- **Hash-таблиця `visited[]`**: нескінченний цикл при переповненні →
+  додано лічильник `vis_count` і поріг 75% (`VIS_MAX_FILL`).
+- **Circular queue crawler**: URL зникав після `visited_add()` при
+  повній черзі → перевірка черги перенесена до `visited_add()`.
+- **`get_attr()` в crawler**: `memchr()` з некоректним size →
+  додана перевірка `val >= te` перед викликом.
+- **`parse_modules()`**: `strncpy` без `' '` → замінено на `snprintf`.
+- **SSRF rate limiter**: `rate_wait()` викликався після запиту, а не до.
 ---
 
 ## Ліцензія

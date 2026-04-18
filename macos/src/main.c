@@ -20,6 +20,64 @@
 #include "scanxss.h"
 #include <sys/stat.h>
 #include <getopt.h>
+#include <dirent.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+/* ── Безпечний пошук найновішого файлу із заданим суфіксом ──────────────
+ * Замінює: popen("ls -t DIR/EXT | head -1", dir)
+ * Не передає жодних даних у shell — тільки POSIX opendir/readdir/stat.
+ * Повертає 1 якщо знайдено, 0 — інакше.                                  */
+static int find_newest_file(const char *dir, const char *suffix,
+                             char *out, size_t outsz)
+{
+    out[0] = '\0';
+    DIR *d = opendir(dir);
+    if (!d) return 0;
+
+    time_t  best_mtime = 0;
+    size_t  slen = strlen(suffix);
+    struct dirent *de;
+
+    while ((de = readdir(d)) != NULL) {
+        /* перевіряємо суфікс */
+        size_t nlen = strlen(de->d_name);
+        if (nlen < slen) continue;
+        if (strcmp(de->d_name + nlen - slen, suffix) != 0) continue;
+
+        /* stat для mtime */
+        char path[1024];
+        snprintf(path, sizeof(path), "%s/%s", dir, de->d_name);
+        struct stat st;
+        if (stat(path, &st) != 0) continue;
+
+        if (st.st_mtime > best_mtime) {
+            best_mtime = st.st_mtime;
+            snprintf(out, outsz, "%s", path);
+        }
+    }
+    closedir(d);
+    return out[0] != '\0';
+}
+
+#ifdef __APPLE__
+/* ── Безпечне відкриття файлу у браузері (macOS) ──────────────────────
+ * Замінює: system("open \"<path>\" &")
+ * Використовує execve — жодного shell, жодної інтерпретації метасимволів. */
+static void open_in_browser(const char *path)
+{
+    pid_t pid = fork();
+    if (pid < 0) return;          /* fork не вдався — мовчки пропускаємо */
+    if (pid == 0) {
+        /* дочірній процес: exec без shell */
+        char *const args[] = { "/usr/bin/open", (char *)path, NULL };
+        char *const envp[] = { NULL };
+        execve("/usr/bin/open", args, envp);
+        _exit(127);               /* execve не мав повернутися */
+    }
+    /* батьківський процес не чекає — аналог & у shell */
+}
+#endif
 
 static void print_banner(void) {
     printf(COL_CYAN
@@ -33,7 +91,7 @@ static void print_banner(void) {
 COL_RESET
 COL_BOLD
 "╔══════════════════════════════════════════════╗\n"
-"║ ScanXSS v1.3.1.1 — Web Vulnerability Scanner ║\n"
+"║ ScanXSS v1.3.2 — Web Vulnerability Scanner ║\n"
 "║   © 2026 root_bsd <root_bsd@itprof.net.ua>   ║\n"
 "║                   GPL-2.0                    ║\n"
 "╚══════════════════════════════════════════════╝\n\n"
@@ -92,7 +150,8 @@ static void print_usage(const char *prog) {
 static VulnType parse_modules(const char *s) {
     if (!s) return VULN_ALL;
     VulnType t = VULN_NONE;
-    char buf[512]; strncpy(buf, s, 511);
+    char buf[512];
+    snprintf(buf, sizeof(buf), "%s", s); /* гарантує '\0' на відміну від strncpy */
     char *tok = strtok(buf, ",");
     while (tok) {
         if      (!strcmp(tok,"xss"))      t |= VULN_XSS;
@@ -392,14 +451,11 @@ int main(int argc, char *argv[]) {
             if (strcmp(argv[_i],"--no-browser")==0) { _no_browser=true; break; }
         if (!_no_browser)
         {
-            /* find last generated HTML report */
-            char find_cmd[768] = {0};
-            const char *home = getenv("HOME");
-            if (!home) home = "/tmp";
-
-            /* build path to report dir */
+            /* find newest .html in report dir — без shell, без popen */
             char rdir[512] = {0};
             char host[256] = {0};
+            const char *home = getenv("HOME");
+            if (!home) home = "/tmp";
             const char *u = ctx->config.target_url;
             if (strncmp(u,"http://",7)==0)  u+=7;
             if (strncmp(u,"https://",8)==0) u+=8;
@@ -415,25 +471,11 @@ int main(int argc, char *argv[]) {
                 snprintf(rdir,sizeof(rdir),"%s/../report/%s",base,host);
             }
 
-            /* find newest .html in report dir */
-            snprintf(find_cmd, sizeof(find_cmd),
-                "ls -t \"%s\"/*.html 2>/dev/null | head -1", rdir);
-            FILE *fp = popen(find_cmd, "r");
-            if (fp) {
-                char html_path[768] = {0};
-                if (fgets(html_path, sizeof(html_path)-1, fp)) {
-                    /* strip newline */
-                    size_t ln = strlen(html_path);
-                    if (ln > 0 && html_path[ln-1]=='\n') html_path[ln-1]='\0';
-                    if (html_path[0]) {
-                        char open_cmd[800];
-                        snprintf(open_cmd, sizeof(open_cmd),
-                                 "open \"%s\" &", html_path);
-                        printf(COL_CYAN "[macOS] Opening report in browser...\n" COL_RESET);
-                        system(open_cmd);
-                    }
-                }
-                pclose(fp);
+            /* find newest .html in report dir — без shell, без popen */
+            char html_path[768] = {0};
+            if (find_newest_file(rdir, ".html", html_path, sizeof(html_path))) {
+                printf(COL_CYAN "[macOS] Opening report in browser...\n" COL_RESET);
+                open_in_browser(html_path); /* execve, не system() */
             }
         } /* if (!_no_browser) */
         } /* extra block */
@@ -461,21 +503,9 @@ int main(int argc, char *argv[]) {
         else { const char *_b=ctx->config.exe_dir[0]?ctx->config.exe_dir:".";
                snprintf(_rdir,sizeof(_rdir),"%s/../report/%s",_b,_host); }
 #endif
-        char _fc[800]={0};
-        snprintf(_fc,sizeof(_fc),"ls -t \"%s\"/*.html 2>/dev/null|head -1",_rdir);
-        FILE *_fp=popen(_fc,"r");
-        if (_fp) {
-            if (fgets(_html, sizeof(_html)-1, _fp))
-                _html[strcspn(_html, "\n")] = '\0';
-            pclose(_fp);
-        }
-        snprintf(_fc,sizeof(_fc),"ls -t \"%s\"/*.txt 2>/dev/null|head -1",_rdir);
-        _fp=popen(_fc,"r");
-        if (_fp) {
-            if (fgets(_txt, sizeof(_txt)-1, _fp))
-                _txt[strcspn(_txt, "\n")] = '\0';
-            pclose(_fp);
-        }
+        /* Пошук через opendir — без shell і без popen */
+        find_newest_file(_rdir, ".html", _html, sizeof(_html));
+        find_newest_file(_rdir, ".txt",  _txt,  sizeof(_txt));
         interactive_email_menu(&email_cfg, _html, _txt,
                                _host, ctx->vuln_count);
     }
@@ -500,17 +530,9 @@ int main(int argc, char *argv[]) {
         else { const char *b=ctx->config.exe_dir[0]?ctx->config.exe_dir:".";
                snprintf(rdir2,sizeof(rdir2),"%s/../report/%s",b,host2); }
 #endif
-        /* Newest HTML */
-        char fc[800]={0};
-        snprintf(fc,sizeof(fc),"ls -t \"%s\"/*.html 2>/dev/null | head -1",rdir2);
-        FILE *fp2=popen(fc,"r");
-        if(fp2){fgets(html_p,sizeof(html_p)-1,fp2);
-                html_p[strcspn(html_p,"\n")]="\0"[0]; pclose(fp2);}
-        /* Newest TXT */
-        snprintf(fc,sizeof(fc),"ls -t \"%s\"/*.txt 2>/dev/null | head -1",rdir2);
-        FILE *fp3=popen(fc,"r");
-        if(fp3){fgets(txt_p,sizeof(txt_p)-1,fp3);
-                txt_p[strcspn(txt_p,"\n")]="\0"[0]; pclose(fp3);}
+        /* Пошук через opendir — без shell і без popen */
+        find_newest_file(rdir2, ".html", html_p, sizeof(html_p));
+        find_newest_file(rdir2, ".txt",  txt_p,  sizeof(txt_p));
         email_send_report(&email_cfg, host2, ctx->vuln_count,
                           html_p[0]?html_p:NULL, txt_p[0]?txt_p:NULL);
     }
@@ -592,9 +614,11 @@ static void smtp_setup_wizard(ScanXSSConfig *cfg) {
 
         mkdir(dir, 0700);
 
-        FILE *cf = fopen(path, "w");
+        /* Записуємо з правами 0600 — тільки власник може читати пароль */
+        int cfd = open(path, O_WRONLY|O_CREAT|O_TRUNC, 0600);
+        FILE *cf = cfd >= 0 ? fdopen(cfd, "w") : NULL;
         if (cf) {
-            fprintf(cf, "# ScanXSS v1.3.1.1 — автоматично збережений конфіг\n");
+            fprintf(cf, "# ScanXSS v1.3.2 — автоматично збережений конфіг\n");
             fprintf(cf, "email_enabled    = false\n");
             fprintf(cf, "smtp_host        = %s\n", cfg->smtp_host);
             fprintf(cf, "smtp_port        = %d\n", cfg->smtp_port);

@@ -20,9 +20,26 @@
 #include "scanxss.h"
 #include <unistd.h>
 
-/* ── Visited-URL hash set ─────────────────────────────────── */
-#define VIS_SIZE 8192
-static char visited[VIS_SIZE][MAX_URL_LEN];
+/* ── Visited-URL hash set ─────────────────────────────────── *
+ * Open-addressing hash table з лічильником заповнення.
+ *
+ * Виправлення Bug 4:
+ *   Попередня реалізація мала два дефекти:
+ *   1. Якщо таблиця повна — visited_check() пробігала всі VIS_SIZE
+ *      слотів і повертала true без гарантованого завершення
+ *      за O(1). При майбутньому паралельному crawl — data race.
+ *   2. visited_add() викликав visited_check() (повний обхід)
+ *      а потім знову шукав вільний слот — подвійна робота.
+ *
+ *   Рішення: окремий лічильник vis_count. Перевірка на
+ *   переповнення — O(1), max probe — VIS_SIZE/2 (75% fill factor
+ *   гарантує ≤кілька probe-ів для типового djb2 розподілу).
+ * ─────────────────────────────────────────────────────────── */
+#define VIS_SIZE       8192
+#define VIS_MAX_FILL   6144   /* 75% — зупинити додавання до цього порогу */
+
+static char         visited[VIS_SIZE][MAX_URL_LEN];
+static unsigned int vis_count;   /* кількість заповнених слотів */
 
 static unsigned int djb2(const char *s) {
     unsigned int h = 5381;
@@ -32,29 +49,39 @@ static unsigned int djb2(const char *s) {
 
 static void visited_reset(void) {
     memset(visited, 0, sizeof(visited));
+    vis_count = 0;
 }
 
+/* Повертає true якщо url вже в таблиці.
+ * При переповненні (vis_count >= VIS_MAX_FILL) — завжди true,
+ * щоб припинити додавання нових URL без нескінченного циклу. */
 static bool visited_check(const char *url) {
-    unsigned int idx = djb2(url) & (VIS_SIZE-1);
-    for (int i = 0; i < VIS_SIZE; i++) {
-        unsigned int k = (idx+i) & (VIS_SIZE-1);
-        if (!visited[k][0])   return false;   /* empty slot = not found */
-        if (strcmp(visited[k], url) == 0) return true;
+    if (vis_count >= VIS_MAX_FILL) return true;   /* таблиця майже повна */
+    unsigned int idx = djb2(url) & (VIS_SIZE - 1);
+    for (unsigned int i = 0; i < VIS_SIZE; i++) {
+        unsigned int k = (idx + i) & (VIS_SIZE - 1);
+        if (!visited[k][0])              return false; /* порожній слот */
+        if (strcmp(visited[k], url) == 0) return true; /* знайдено */
     }
-    return true; /* table full — treat as visited to avoid loop */
+    return true; /* теоретично недосяжно при fill<75%, але безпечний fallback */
 }
 
+/* Додає url до таблиці. Повертає true при успіху, false якщо вже є або повна. */
 static bool visited_add(const char *url) {
-    if (visited_check(url)) return false;      /* already present */
-    unsigned int idx = djb2(url) & (VIS_SIZE-1);
-    for (int i = 0; i < VIS_SIZE; i++) {
-        unsigned int k = (idx+i) & (VIS_SIZE-1);
+    if (vis_count >= VIS_MAX_FILL) return false;   /* не додаємо — повна */
+    unsigned int idx = djb2(url) & (VIS_SIZE - 1);
+    for (unsigned int i = 0; i < VIS_SIZE; i++) {
+        unsigned int k = (idx + i) & (VIS_SIZE - 1);
         if (!visited[k][0]) {
-            strncpy(visited[k], url, MAX_URL_LEN-1);
+            /* порожній слот — вставляємо */
+            strncpy(visited[k], url, MAX_URL_LEN - 1);
+            visited[k][MAX_URL_LEN - 1] = '\0';
+            vis_count++;
             return true;
         }
+        if (strcmp(visited[k], url) == 0) return false; /* вже є */
     }
-    return false; /* full */
+    return false; /* повна */
 }
 
 /* ── HTML attribute extractor ─────────────────────────────── */
@@ -68,7 +95,8 @@ static int get_attr(const char *ts, const char *te,
     if (!pos || pos >= te) { pos = strcasestr(ts, s2); q='\''; }
     if (!pos || pos >= te) return 0;
     const char *val = pos + strlen(attr) + 2;
-    const char *end = memchr(val, q, (size_t)(te - val + 128));
+    if (val >= te) return 0;   /* val вийшов за межі тегу */
+    const char *end = memchr(val, q, (size_t)(te - val));
     if (!end) return 0;
     size_t len = (size_t)(end - val);
     if (len >= sz) len = sz-1;
@@ -388,12 +416,15 @@ int crawler_run(ScanContext *ctx) {
                 if (visited_check(u)) continue;
                 if (session_url_visited(ctx, u)) continue;
 
-                if (!visited_add(u)) continue;
-
+                /* перевіряємо місце в черзі ДО visited_add —
+                 * інакше URL буде позначений відвіданим але в чергу не потрапить */
                 if ((tail+1) % qcap == head) {
                     log_warn(cfg->color, "Queue full — some links dropped");
                     break;
                 }
+
+                if (!visited_add(u)) continue;
+
                 strncpy(queue[tail].url, u, MAX_URL_LEN-1);
                 queue[tail].depth = cur.depth+1;
                 tail = (tail+1) % qcap;

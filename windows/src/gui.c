@@ -520,7 +520,7 @@ static void paint_header(HWND hwnd) {
     SelectObject(dc, sm);
     SetTextColor(dc, RGB(186,220,255));
     RECT sr = {16, 38, 600, 58};
-    DrawTextW(dc, L"Web Vulnerability Scanner v1.3.1 • © 2026 root_bsd", -1, &sr,
+    DrawTextW(dc, L"Web Vulnerability Scanner v1.3.2 • © 2026 root_bsd", -1, &sr,
               DT_LEFT|DT_VCENTER|DT_SINGLELINE);
     SelectObject(dc, old);
     DeleteObject(sm);
@@ -811,7 +811,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
         case IDM_HELP_ABOUT:
             MessageBoxW(hwnd,
-                L"ScanXSS v1.3.1.1\n"
+                L"ScanXSS v1.3.2\n"
                 L"Web Vulnerability Scanner\n\n"
                 L"Modules: XSS, SQLi, LFI, RCE, SSRF,\n"
                 L"Open Redirect, CRLF Injection\n\n"

@@ -1,4 +1,4 @@
-# ScanXSS v1.3.1.1 — Installation
+# ScanXSS v1.3.2 — Installation
 
 ## Linux
 ```bash

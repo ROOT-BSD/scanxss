@@ -52,7 +52,7 @@
         styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|
                   NSWindowStyleMaskMiniaturizable|NSWindowStyleMaskResizable
         backing:NSBackingStoreBuffered defer:NO];
-    self.window.title      = @"ScanXSS v1.3.1.1";
+    self.window.title      = @"ScanXSS v1.3.2";
     self.window.minSize    = NSMakeSize(900,600);
     self.window.backgroundColor = [NSColor blackColor];
     [self.window center];
@@ -78,7 +78,7 @@
 
     // Center: subtitle
     NSTextField *sub = [self mkLabel:NSMakeRect(200,16,340,18)
-        text:@"Web Vulnerability Scanner v1.3.1.1"
+        text:@"Web Vulnerability Scanner v1.3.2"
         font:[NSFont systemFontOfSize:11] color:COL_GRAY parent:hdr];
     (void)sub;
 
@@ -259,7 +259,7 @@
 // ── Banner ────────────────────────────────────────────────
 - (void)printBanner {
     [self appendLine:@"╔══════════════════════════════════════════════════╗" color:COL_BLUE];
-    [self appendLine:@"║  ScanXSS v1.3.1.1 — Web Vulnerability Scanner    ║" color:COL_CYAN];
+    [self appendLine:@"║  ScanXSS v1.3.2 — Web Vulnerability Scanner    ║" color:COL_CYAN];
     [self appendLine:@"║    © 2026 root_bsd <root_bsd@itprof.net.ua>      ║" color:COL_GRAY];
     [self appendLine:@"║                   GPL-2.0                        ║" color:COL_GRAY];
     [self appendLine:@"╚══════════════════════════════════════════════════╝" color:COL_BLUE];
