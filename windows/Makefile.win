@@ -1,0 +1,147 @@
+# ScanXSS GUI — Cross-compile for Windows x64 from Linux
+# Requires: mingw-w64  (sudo apt install mingw-w64)
+#           nsis       (sudo apt install nsis)
+#           tcl        (sudo apt install tcl)   — only for sqlite3.c generation
+
+CC      := x86_64-w64-mingw32-gcc
+WINDRES := x86_64-w64-mingw32-windres
+STRIP   := x86_64-w64-mingw32-strip
+
+TARGET  := scanxss-gui.exe
+BD      := build-win
+
+CFLAGS  := -O2 -Wall -Wno-unused-function -Wno-unused-variable \
+            -Wno-stringop-truncation -Wno-format-truncation \
+            -Ivendor -Isrc \
+            -DWINVER=0x0A00 -D_WIN32_WINNT=0x0A00 \
+            -DUNICODE -D_UNICODE \
+            -DSQLITE_THREADSAFE=1 \
+            -DSQLITE_OMIT_LOAD_EXTENSION
+
+LDFLAGS := -mwindows -static \
+            -lwinhttp -lcomctl32 -lcomdlg32 \
+            -lshell32 -lole32 -loleaut32 \
+            -lws2_32 -lwinspool -lgdi32 \
+            -luser32 -lkernel32 -ladvapi32
+
+SQLITE_OBJ := $(BD)/sqlite3.o
+
+$(BD)/sqlite3.o: vendor/sqlite3.c | $(BD)
+	@echo "  CC    vendor/sqlite3.c"
+	@$(CC) -O2 -w -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION \
+	    -DWINVER=0x0A00 -D_WIN32_WINNT=0x0A00 \
+	    -c vendor/sqlite3.c -o $@
+
+SRC := src/gui.c \
+       src/scanner.c \
+       src/db.c \
+       src/export.c
+
+RES := $(BD)/app.res
+
+.PHONY: all clean installer help
+
+all: vendor/sqlite3.c $(BD) $(TARGET)
+
+# ── Auto-generate sqlite3.c amalgamation if missing ──────────
+# Downloads Ubuntu source package and builds the amalgamation.
+# Requires: tcl  (sudo apt install tcl)
+vendor/sqlite3.c:
+	@echo ""
+	@echo "  [sqlite3] vendor/sqlite3.c not found — generating amalgamation..."
+	@echo "  [sqlite3] Downloading SQLite 3.45.1 source..."
+	@mkdir -p vendor
+	@curl -fsSL --max-time 120 \
+	    "https://archive.ubuntu.com/ubuntu/pool/main/s/sqlite3/sqlite3_3.45.1.orig.tar.xz" \
+	    -o /tmp/_sqlite3_src.tar.xz \
+	  || { echo ""; \
+	       echo "  ERROR: Cannot download sqlite3 source."; \
+	       echo "  Manual fix — one of these options:"; \
+	       echo ""; \
+	       echo "  Option A (Ubuntu/Debian):"; \
+	       echo "    sudo apt install libsqlite3-dev tcl"; \
+	       echo "    make vendor-sqlite"; \
+	       echo ""; \
+	       echo "  Option B (download directly):"; \
+	       echo "    wget https://www.sqlite.org/2024/sqlite-amalgamation-3450200.zip"; \
+	       echo "    unzip sqlite-amalgamation-3450200.zip"; \
+	       echo "    cp sqlite-amalgamation-3450200/sqlite3.c vendor/"; \
+	       echo ""; \
+	       exit 1; }
+	@echo "  [sqlite3] Extracting..."
+	@tar xf /tmp/_sqlite3_src.tar.xz -C /tmp/ 2>/dev/null || true
+	@echo "  [sqlite3] Building amalgamation (requires tcl)..."
+	@cd /tmp/sqlite3-3.45.1 && make sqlite3.c -s 2>/dev/null \
+	  || { echo "  [sqlite3] Trying with tclsh..."; \
+	       cd /tmp/sqlite3-3.45.1 && \
+	       ./configure --quiet 2>/dev/null && make sqlite3.c 2>&1 | tail -3; }
+	@cp /tmp/sqlite3-3.45.1/sqlite3.c vendor/sqlite3.c
+	@rm -rf /tmp/_sqlite3_src.tar.xz /tmp/sqlite3-3.45.1
+	@echo "  [sqlite3] vendor/sqlite3.c ready ($(shell wc -l < vendor/sqlite3.c) lines)"
+	@echo ""
+
+# ── Alternative: copy from system if libsqlite3-dev installed ─
+vendor-sqlite:
+	@mkdir -p vendor
+	@if [ -f /usr/include/sqlite3.h ]; then \
+	    cp /usr/include/sqlite3.h vendor/sqlite3.h; \
+	    echo "  Copied sqlite3.h from system"; \
+	fi
+	@if [ -f /tmp/sqlite3-3.45.1/sqlite3.c ]; then \
+	    cp /tmp/sqlite3-3.45.1/sqlite3.c vendor/sqlite3.c; \
+	    echo "  Copied sqlite3.c from /tmp/sqlite3-3.45.1/"; \
+	elif command -v apt-get >/dev/null 2>&1; then \
+	    echo "  Downloading and building sqlite3 amalgamation..."; \
+	    $(MAKE) -f Makefile.win vendor/sqlite3.c; \
+	else \
+	    echo "  ERROR: sqlite3.c not found. See 'make help'."; exit 1; \
+	fi
+
+$(BD):
+	@mkdir -p $(BD)
+
+$(BD)/app.res: resources/app.rc resources/app.ico | $(BD)
+	@echo "  RC    resources/app.rc"
+	@$(WINDRES) resources/app.rc -O coff -o $@ \
+	    --include-dir resources --include-dir src
+
+$(TARGET): $(SRC) $(SQLITE_OBJ) $(RES)
+	@echo "  CC+LD $@"
+	@$(CC) $(CFLAGS) $(SRC) $(SQLITE_OBJ) $(RES) -o $@ $(LDFLAGS)
+	@$(STRIP) $@
+	@echo ""
+	@echo "  ✅  $(TARGET) — $$(du -sh $(TARGET) | cut -f1)"
+
+installer: $(TARGET)
+	@echo "  NSIS  installer/scanxss-setup.nsi"
+	@cd installer && makensis scanxss-setup.nsi 2>&1 | grep -E "Output|Error|error"
+	@echo "  ✅  installer/scanxss-setup.exe"
+
+clean:
+	@rm -rf $(BD) $(TARGET)
+	@echo "  Cleaned"
+
+distclean: clean
+	@rm -f vendor/sqlite3.c
+	@echo "  Removed vendor/sqlite3.c"
+
+help:
+	@echo ""
+	@echo "ScanXSS GUI — Windows build system"
+	@echo ""
+	@echo "Targets:"
+	@echo "  make              — build scanxss-gui.exe (downloads sqlite3.c if needed)"
+	@echo "  make installer    — build scanxss-gui.exe + scanxss-setup.exe"
+	@echo "  make vendor-sqlite— manually fetch/copy sqlite3.c"
+	@echo "  make clean        — remove build artifacts"
+	@echo "  make distclean    — also remove vendor/sqlite3.c"
+	@echo ""
+	@echo "Requirements (Ubuntu/Debian):"
+	@echo "  sudo apt install mingw-w64 nsis tcl"
+	@echo ""
+	@echo "If auto-download fails, get sqlite3.c manually:"
+	@echo "  wget https://www.sqlite.org/2024/sqlite-amalgamation-3450200.zip"
+	@echo "  unzip sqlite-amalgamation-3450200.zip"
+	@echo "  cp sqlite-amalgamation-3450200/sqlite3.c vendor/"
+	@echo "  make"
+	@echo ""

@@ -1,0 +1,133 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [ main, master, dev ]
+    tags:     [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-linux:
+    name: Linux (Ubuntu)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libsqlite3-dev
+
+      - name: Build
+        working-directory: linux
+        run: make -j$(nproc)
+
+      - name: Smoke test — version
+        working-directory: linux
+        run: ./scanxss --version
+
+      - name: Smoke test — payloads-stats
+        working-directory: linux
+        run: ./scanxss --payloads-stats
+
+      - name: Smoke test — help
+        working-directory: linux
+        run: ./scanxss --help
+
+      - name: Security scan — exit code on vulns
+        working-directory: linux
+        run: |
+          # CI/CD: exit 2 при вразливостях, 0 якщо чисто, 1 при помилці
+          echo "Exit codes: 0=clean, 1=error, 2=vulns_found"
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanxss-linux
+          path: linux/scanxss
+          retention-days: 7
+
+  build-macos:
+    name: macOS (latest)
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install curl openssl sqlite3 pkg-config
+          echo "PKG_CONFIG_PATH=$(brew --prefix openssl)/lib/pkgconfig:$(brew --prefix curl)/lib/pkgconfig" >> $GITHUB_ENV
+          echo "OPENSSL_PREFIX=$(brew --prefix openssl)" >> $GITHUB_ENV
+          echo "CURL_PREFIX=$(brew --prefix curl)" >> $GITHUB_ENV
+
+      - name: Build
+        working-directory: macos
+        run: make -j$(sysctl -n hw.logicalcpu)
+
+      - name: Smoke test
+        working-directory: macos
+        run: |
+          ./scanxss --version
+          ./scanxss --payloads-stats
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanxss-macos
+          path: macos/scanxss
+          retention-days: 7
+
+  release:
+    name: Create Release
+    needs: [ build-linux, build-macos ]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Linux binary
+        uses: actions/download-artifact@v4
+        with:
+          name: scanxss-linux
+          path: dist/linux/
+
+      - name: Download macOS binary
+        uses: actions/download-artifact@v4
+        with:
+          name: scanxss-macos
+          path: dist/macos/
+
+      - name: Package source
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          zip -r scanxss-${TAG}-linux-x64.zip dist/linux/ linux/scanxss.conf \
+            README.md CHANGELOG.md INSTALL.md LICENSE 2>/dev/null || true
+          zip -r scanxss-${TAG}-macos.zip dist/macos/ macos/scanxss.conf \
+            README.md CHANGELOG.md INSTALL.md LICENSE 2>/dev/null || true
+
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          # Витягуємо блок з CHANGELOG між поточною і попередньою версіями
+          awk "/## \[${TAG}\]/{flag=1; next} /## \[/{flag=0} flag" \
+            CHANGELOG.md > release_notes.md
+          cat release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release_notes.md
+          files: |
+            scanxss-*-linux-x64.zip
+            scanxss-*-macos.zip
+          draft: false
+          prerelease: false

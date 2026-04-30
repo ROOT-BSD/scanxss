@@ -1,0 +1,68 @@
+# ── Build artifacts ─────────────────────────────────────────
+build/
+*.o
+*.a
+
+# ── Compiled binaries ────────────────────────────────────────
+linux/scanxss
+macos/scanxss
+windows/scanxss-gui.exe
+windows/scanxss-gui-signed.exe
+
+# ── Runtime databases (генеруються при першому запуску) ──────
+DB_SCAN/
+scan.db
+# payloads.db — розкоментуйте якщо НЕ хочете комітити власну БД:
+# payloads.db
+
+# ── Reports ──────────────────────────────────────────────────
+report/
+*/report/
+REPORT/
+*/REPORT/
+
+# ── Vendor SQLite amalgamation (8.7 МБ, лінкуємось з системною) ─
+linux/vendor/sqlite3.c
+macos/vendor/sqlite3.c
+
+# ── Windows installer binaries ───────────────────────────────
+windows/installer/scanxss-setup.exe
+windows/installer/RootBSD-CA.cer
+
+# ── Code signing keys (НІКОЛИ не комітимо) ──────────────────
+*.pfx
+*.p12
+*.key
+*.pem
+codesign.*
+
+# ── macOS ────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+__MACOSX/
+
+# ── Windows ──────────────────────────────────────────────────
+Thumbs.db
+*.pdb
+*.ilk
+*.exp
+*.lib
+
+# ── Logs / temp ──────────────────────────────────────────────
+*.log
+
+# ── Python ───────────────────────────────────────────────────
+__pycache__/
+*.pyc
+
+# ── Editor / IDE ─────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.clangd/
+compile_commands.json
